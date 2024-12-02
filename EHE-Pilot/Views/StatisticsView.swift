@@ -1,7 +1,16 @@
+//
+//  StatisticsView.swift
+//  EHE-Pilot
+//
+//  Created by 胡逸飞 on 2024/12/1.
+//
+
+
 import SwiftUI
 import CoreData
 
 struct StatisticsView: View {
+    @StateObject private var locationManager = LocationManager.shared
     @FetchRequest(
         entity: LocationRecord.entity(),
         sortDescriptors: [NSSortDescriptor(keyPath: \LocationRecord.timestamp, ascending: true)],
@@ -21,7 +30,7 @@ struct StatisticsView: View {
                 }
             } else {
                 if let last = lastHomeTime {
-                    timeAway += location.timestamp.timeIntervalSince(last)
+                    timeAway += location.timestamp?.timeIntervalSince(last) ?? 0
                     lastHomeTime = nil
                 }
             }
@@ -50,13 +59,11 @@ struct StatisticsView: View {
                     Text("\(todayLocations.count)")
                 }
                 
-                if let lastLocation = todayLocations.last {
-                    HStack {
-                        Text("Current Status")
-                        Spacer()
-                        Text(lastLocation.isHome ? "At Home" : "Away")
-                            .foregroundColor(lastLocation.isHome ? .green : .orange)
-                    }
+                HStack {
+                    Text("Current Status")
+                    Spacer()
+                    Text(locationManager.currentLocationStatus ? "At Home" : "Away")
+                        .foregroundColor(locationManager.currentLocationStatus ? .green : .orange)
                 }
             }
         }

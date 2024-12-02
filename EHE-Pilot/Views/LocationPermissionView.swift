@@ -1,3 +1,11 @@
+//
+//  LocationPermissionView.swift
+//  EHE-Pilot
+//
+//  Created by 胡逸飞 on 2024/12/1.
+//
+
+
 import SwiftUI
 
 struct LocationPermissionView: View {
@@ -15,8 +23,10 @@ struct LocationPermissionView: View {
             
             switch locationManager.authorizationStatus {
             case .notDetermined:
-                permissionRequestContent
-            case .restricted, .denied:
+                initialRequestContent
+            case .authorizedWhenInUse:
+                requestAlwaysContent
+            case .denied, .restricted:
                 openSettingsContent
             default:
                 EmptyView()
@@ -25,7 +35,7 @@ struct LocationPermissionView: View {
         .padding()
     }
     
-    private var permissionRequestContent: some View {
+    private var initialRequestContent: some View {
         VStack(spacing: 20) {
             Text("We need location access to track your activity range")
                 .multilineTextAlignment(.center)
@@ -35,6 +45,25 @@ struct LocationPermissionView: View {
                 locationManager.requestPermission()
             }) {
                 Text("Grant Permission")
+                    .fontWeight(.semibold)
+                    .foregroundColor(.white)
+                    .frame(width: 200, height: 50)
+                    .background(Color.blue)
+                    .cornerRadius(10)
+            }
+        }
+    }
+    
+    private var requestAlwaysContent: some View {
+        VStack(spacing: 20) {
+            Text("To track your location in background, we need 'Always' permission")
+                .multilineTextAlignment(.center)
+                .foregroundColor(.gray)
+            
+            Button(action: {
+                locationManager.requestPermission()
+            }) {
+                Text("Allow Background Location")
                     .fontWeight(.semibold)
                     .foregroundColor(.white)
                     .frame(width: 200, height: 50)

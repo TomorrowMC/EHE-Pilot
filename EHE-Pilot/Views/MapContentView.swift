@@ -1,5 +1,14 @@
+//
+//  MapContentView.swift
+//  EHE-Pilot
+//
+//  Created by 胡逸飞 on 2024/12/1.
+//
+
+
 import SwiftUI
 import MapKit
+
 
 struct MapContentView: View {
     @StateObject private var locationManager = LocationManager.shared
@@ -28,7 +37,7 @@ struct MapContentView: View {
                     longitude: location.longitude),
                        tint: location.isHome ? .green : .red)
             }
-            .edgesIgnoringSafeArea(.all)
+            .edgesIgnoringSafeArea(.top)
             
             VStack {
                 Spacer()
@@ -46,7 +55,8 @@ struct MapContentView: View {
                             .clipShape(Circle())
                             .shadow(radius: 4)
                     }
-                    .padding()
+                    .padding(.trailing, 16) // 添加右边距
+                    .padding(.bottom, 16) // 添加底部边距，避免与标签栏重叠
                 }
             }
         }
@@ -54,6 +64,14 @@ struct MapContentView: View {
             if let location = locationManager.currentLocation {
                 region.center = location.coordinate
             }
+        }
+    }
+}
+
+struct MapContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        NavigationView {
+            MapContentView()
         }
     }
 }

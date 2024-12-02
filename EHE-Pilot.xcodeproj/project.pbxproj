@@ -6,8 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		D0FA0B052CFD425C0046D7BE /* readme.md in Resources */ = {isa = PBXBuildFile; fileRef = D0FA0B042CFD425C0046D7BE /* readme.md */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		D0FA0AB82CFD385F0046D7BE /* EHE-Pilot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "EHE-Pilot.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		D0FA0B042CFD425C0046D7BE /* readme.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = readme.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -45,6 +50,7 @@
 		D0FA0AAF2CFD385F0046D7BE = {
 			isa = PBXGroup;
 			children = (
+				D0FA0B042CFD425C0046D7BE /* readme.md */,
 				D0FA0ABA2CFD385F0046D7BE /* EHE-Pilot */,
 				D0FA0AB92CFD385F0046D7BE /* Products */,
 			);
@@ -122,6 +128,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D0FA0B052CFD425C0046D7BE /* readme.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -151,6 +158,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "EHE-Pilot/Info.plist";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "需要在后台访问您的位置以记录您的活动范围";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "需要访问您的位置以记录您的活动范围";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -182,6 +191,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "EHE-Pilot/Info.plist";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "需要在后台访问您的位置以记录您的活动范围";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "需要访问您的位置以记录您的活动范围";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

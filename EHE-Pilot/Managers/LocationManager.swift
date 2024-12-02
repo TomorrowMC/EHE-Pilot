@@ -1,7 +1,15 @@
+//
+//  LocationManager.swift
+//  EHE-Pilot
+//
+//  Created by 胡逸飞 on 2024/12/1.
+//
+
+
 import CoreLocation
 import CoreData
 import Combine
-
+import BackgroundTasks
 class LocationManager: NSObject, ObservableObject {
     static let shared = LocationManager()
     
@@ -10,6 +18,7 @@ class LocationManager: NSObject, ObservableObject {
     @Published var authorizationStatus: CLAuthorizationStatus = .notDetermined
     @Published var isAuthorized = false
     @Published var homeLocation: HomeLocation?
+    @Published var currentLocationStatus: Bool = false
     
     // MARK: - Private Properties
     private let locationManager = CLLocationManager()
@@ -30,13 +39,62 @@ class LocationManager: NSObject, ObservableObject {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
         locationManager.allowsBackgroundLocationUpdates = true
+        locationManager.showsBackgroundLocationIndicator = true  // 添加这行
         locationManager.pausesLocationUpdatesAutomatically = false
-        locationManager.distanceFilter = 50 // Update every 50 meters
+        locationManager.distanceFilter = 50
         
-        // Get initial authorization status
         authorizationStatus = locationManager.authorizationStatus
         updateAuthorizationStatus(locationManager.authorizationStatus)
+        // 设置显著位置变化监测，这是后台定位的关键
+        locationManager.startMonitoringSignificantLocationChanges()
     }
+    
+    func requestPermission() {
+        locationManager.requestWhenInUseAuthorization()
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            self.locationManager.requestAlwaysAuthorization()
+        }
+    }
+    
+    private func registerBackgroundTask() {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: "com.yourdomain.locationUpdate", using: nil) { task in
+            self.handleBackgroundTask(task as! BGAppRefreshTask)
+        }
+    }
+    
+    private func scheduleBackgroundTask() {
+        let request = BGAppRefreshTaskRequest(identifier: "com.yourdomain.locationUpdate")
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 5 * 60) // 5 minutes
+        
+        do {
+            try BGTaskScheduler.shared.submit(request)
+        } catch {
+            print("Could not schedule background task: \(error)")
+        }
+    }
+    
+    func handleBackgroundTask(_ task: BGAppRefreshTask) {
+        // 创建一个任务完成的标记
+        let taskCompletionHandler = { [weak self] in
+            task.setTaskCompleted(success: true)
+            self?.scheduleBackgroundTask() // 安排下一次任务
+        }
+        
+        // 设置任务超时处理
+        task.expirationHandler = {
+            task.setTaskCompleted(success: false)
+        }
+        
+        // 请求一次位置更新
+        locationManager.requestLocation()
+        
+        // 5秒后完成任务
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            taskCompletionHandler()
+        }
+    }
+    
     
     private func setupUpdateFrequencyObserver() {
         NotificationCenter.default.publisher(for: NSNotification.Name("LocationUpdateFrequencyChanged"))
@@ -48,10 +106,7 @@ class LocationManager: NSObject, ObservableObject {
             .store(in: &cancellables)
     }
     
-    // MARK: - Public Methods
-    func requestPermission() {
-        locationManager.requestAlwaysAuthorization()
-    }
+
     
     func startMonitoring() {
         locationManager.startUpdatingLocation()
@@ -94,14 +149,12 @@ class LocationManager: NSObject, ObservableObject {
     }
     
     func saveHomeLocation(latitude: Double, longitude: Double, radius: Double) {
-        // Delete existing home locations
         let fetchRequest: NSFetchRequest<NSFetchRequestResult> = HomeLocation.fetchRequest()
         let deleteRequest = NSBatchDeleteRequest(fetchRequest: fetchRequest)
         
         do {
             try context.execute(deleteRequest)
             
-            // Create new home location
             let home = HomeLocation(context: context)
             home.latitude = latitude
             home.longitude = longitude
@@ -112,6 +165,10 @@ class LocationManager: NSObject, ObservableObject {
             
             DispatchQueue.main.async {
                 self.homeLocation = home
+                // 更新当前位置状态
+                if let currentLocation = self.currentLocation {
+                    self.updateCurrentLocationStatus(for: currentLocation)
+                }
             }
         } catch {
             print("Error saving home location: \(error)")
@@ -155,25 +212,42 @@ class LocationManager: NSObject, ObservableObject {
             }
         }
     }
+
+    private func updateCurrentLocationStatus(for location: CLLocation) {
+        guard let home = homeLocation else {
+            currentLocationStatus = false
+            return
+        }
+        
+        let homeCoordinate = CLLocation(latitude: home.latitude, longitude: home.longitude)
+        let distance = location.distance(from: homeCoordinate)
+        
+        DispatchQueue.main.async {
+            self.currentLocationStatus = distance <= home.radius
+        }
+    }
+    
+
+    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        guard let location = locations.last else { return }
+        
+        DispatchQueue.main.async {
+            self.currentLocation = location
+            self.updateCurrentLocationStatus(for: location)
+        }
+        
+        saveLocationRecord(location)
+    }
 }
 
 // MARK: - CLLocationManagerDelegate
 extension LocationManager: CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         updateAuthorizationStatus(manager.authorizationStatus)
-    }
-    
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { return }
-        
-        DispatchQueue.main.async {
-            self.currentLocation = location
+        if manager.authorizationStatus == .authorizedAlways {
+            locationManager.startMonitoringSignificantLocationChanges()
+            scheduleBackgroundTask()
         }
-        
-        saveLocationRecord(location)
     }
     
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("Location manager failed with error: \(error)")
-    }
 }

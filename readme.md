@@ -1,7 +1,3 @@
-# Location Tracker App
-
-A SwiftUI-based iOS application that tracks user's location and calculates time spent away from home. The app uses CoreLocation for location tracking and CoreData for data persistence.
-
 ## Project Structure
 
 ```

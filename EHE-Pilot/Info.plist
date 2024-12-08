@@ -5,20 +5,18 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>
+		<string>fetch</string>
+		<string>processing</string>
 	</array>
-    <key>UIBackgroundModes</key>
-    <array>
-        <string>location</string>
-        <string>fetch</string>
-        <string>processing</string>
-    </array>
-    <key>BGTaskSchedulerPermittedIdentifiers</key>
-    <array>
-        <string>com.yourdomain.locationUpdate</string>
-    </array>
-    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-    <string>We need background location access to track your time spent away from home.</string>
-    <key>NSLocationAlwaysUsageDescription</key>
-    <string>We need background location access to track your time spent away from home.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.yourdomain.locationUpdate</string>
+	</array>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>We need background location access to track your time spent away from home.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>We need background location access to track your time spent away from home.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need location access while using the app to track your activity range.</string>
 </dict>
 </plist>

@@ -60,6 +60,21 @@ LocationTracker/
 └── Extensions/
     └── Calendar+Extension.swift        # Utility extensions for date/time calculations
 ```
+## Data Models
+
+### LocationRecord (CoreData Entity)
+- **timestamp (Date):** When the location was recorded.
+- **latitude (Double):** User's latitude.
+- **longitude (Double):** User's longitude.
+- **isHome (Bool):** Whether the user was within the home radius at that time.
+- **distanceFromHome (Double):** Distance to the home location.
+
+### HomeLocation (CoreData Entity)
+- **latitude (Double)**
+- **longitude (Double)**
+- **radius (Double)**: Defines the home boundary.
+- **timestamp (Date)**: Last time home was set or updated.
+- ** gpsAccuracy (Double)** : GPS strength of the current recording point for determining whether the user is in a building or not
 
 ## Core Functionalities
 - **CoreData Storage:** Every recorded location is stored along with timestamp, latitude, longitude, and a Boolean indicating if user was at home.

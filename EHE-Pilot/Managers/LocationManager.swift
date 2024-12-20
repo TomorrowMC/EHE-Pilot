@@ -23,13 +23,11 @@ class LocationManager: NSObject, ObservableObject {
     private let context = PersistenceController.shared.container.viewContext
     private var updateTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
-    
     override init() {
         super.init()
         setupLocationManager()
         loadHomeLocation()
     }
-    
     private func setupLocationManager() {
         locationManager.delegate = self
         locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
@@ -142,6 +140,9 @@ class LocationManager: NSObject, ObservableObject {
         record.latitude = location.coordinate.latitude
         record.longitude = location.coordinate.longitude
         
+        record.gpsAccuracy = NSNumber(value: location.horizontalAccuracy)
+
+
         if let home = homeLocation {
             let homeCoordinate = CLLocation(latitude: home.latitude, longitude: home.longitude)
             let distance = location.distance(from: homeCoordinate)
@@ -151,14 +152,14 @@ class LocationManager: NSObject, ObservableObject {
             record.distanceFromHome = 0
             record.isHome = false
         }
-        
+
         do {
             try context.save()
-            // 保存后，StatisticsView会自动从CoreData中读取最新数据并刷新UI
         } catch {
             print("Error saving location record: \(error)")
         }
     }
+
     
     private func updateAuthorizationStatus(_ status: CLAuthorizationStatus) {
         DispatchQueue.main.async {

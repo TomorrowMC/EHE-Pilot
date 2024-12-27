@@ -23,19 +23,60 @@ class LocationManager: NSObject, ObservableObject {
     private let context = PersistenceController.shared.container.viewContext
     private var updateTimer: Timer?
     private var cancellables = Set<AnyCancellable>()
+    
+    // 新增属性用于动态调整前台频率
+    private var currentForegroundFrequency: TimeInterval = 30
+    private var currentAccuracy: CLLocationAccuracy = kCLLocationAccuracyHundredMeters
+    
     override init() {
         super.init()
         setupLocationManager()
         loadHomeLocation()
+        observeMotionChanges()
     }
+    
     private func setupLocationManager() {
         locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        locationManager.desiredAccuracy = currentAccuracy
         locationManager.showsBackgroundLocationIndicator = false
         locationManager.pausesLocationUpdatesAutomatically = false
-        locationManager.distanceFilter = kCLDistanceFilterNone // 尝试无距离过滤，持续更新
+        locationManager.distanceFilter = kCLDistanceFilterNone
         authorizationStatus = locationManager.authorizationStatus
         updateAuthorizationStatus(locationManager.authorizationStatus)
+    }
+    
+    private func observeMotionChanges() {
+        // 当MotionManager状态变化时，动态调整定位策略
+        MotionManager.shared.$isUserMoving
+            .sink { [weak self] moving in
+                guard let self = self else { return }
+                self.adjustLocationPolicy(forMoving: moving)
+            }
+            .store(in: &cancellables)
+    }
+    
+    private func adjustLocationPolicy(forMoving moving: Bool) {
+        // 当用户运动时，提高精度，不降低频率（保持30秒）
+        // 当用户静止时，降低精度或增加定位间隔，比如改为60秒一次。
+        
+        if moving {
+            // 用户在运动：高精度、更新间隔不变
+            currentAccuracy = kCLLocationAccuracyBest
+            currentForegroundFrequency = 2*60
+        } else {
+            // 用户静止：降低精度（百米级别即可），减少更新频率
+            currentAccuracy = kCLLocationAccuracyHundredMeters
+            currentForegroundFrequency = 10*60
+        }
+        
+        // 应用新的策略
+        locationManager.desiredAccuracy = currentAccuracy
+        
+        // 如果正在前台更新，需要重启Timer
+        if updateTimer != nil {
+            stopForegroundUpdates()
+            startForegroundUpdates()
+        }
     }
     
     func requestPermission() {
@@ -63,7 +104,7 @@ class LocationManager: NSObject, ObservableObject {
     
     func scheduleBackgroundTask() {
         let request = BGAppRefreshTaskRequest(identifier: "com.EHE-Pilot.LocationUpdate")
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 5 * 60)
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 10 * 60) // 10分钟后尝试唤醒
         
         do {
             try BGTaskScheduler.shared.submit(request)
@@ -72,24 +113,19 @@ class LocationManager: NSObject, ObservableObject {
         }
     }
 
-    // 在前台时每30秒无论位置是否更新都写入CoreData
     func startForegroundUpdates() {
-        stopForegroundUpdates() // 先清理可能存在的timer
+        stopForegroundUpdates()
         locationManager.startUpdatingLocation()
         
-        let frequency: TimeInterval = 30
-        updateTimer = Timer.scheduledTimer(withTimeInterval: frequency, repeats: true) { [weak self] _ in
+        updateTimer = Timer.scheduledTimer(withTimeInterval: currentForegroundFrequency, repeats: true) { [weak self] _ in
             guard let self = self else { return }
-            // 无论location是否变化，都使用currentLocation写入CoreData
             if let loc = self.currentLocation {
                 self.saveLocationRecord(loc)
             } else {
-                // 如果还没有currentLocation（可能刚启动还没拿到位置）
-                // 可以尝试requestLocation()获取一次最新位置
                 self.locationManager.requestLocation()
             }
         }
-        updateTimer?.tolerance = frequency * 0.1
+        updateTimer?.tolerance = currentForegroundFrequency * 0.1
     }
     
     func stopForegroundUpdates() {
@@ -134,15 +170,15 @@ class LocationManager: NSObject, ObservableObject {
         }
     }
     
+    // 在saveLocationRecord中设置ifUpdated = false
     private func saveLocationRecord(_ location: CLLocation) {
         let record = LocationRecord(context: context)
         record.timestamp = location.timestamp
         record.latitude = location.coordinate.latitude
         record.longitude = location.coordinate.longitude
-        
         record.gpsAccuracy = NSNumber(value: location.horizontalAccuracy)
-
-
+        record.ifUpdated = false // 新增这一行，初始为false
+        
         if let home = homeLocation {
             let homeCoordinate = CLLocation(latitude: home.latitude, longitude: home.longitude)
             let distance = location.distance(from: homeCoordinate)
@@ -158,8 +194,113 @@ class LocationManager: NSObject, ObservableObject {
         } catch {
             print("Error saving location record: \(error)")
         }
+        
+        // 保存后尝试上传数据
+        attemptUploadRecords()
+    }
+    
+    func attemptUploadRecords() {
+        let request: NSFetchRequest<LocationRecord> = LocationRecord.fetchRequest()
+        request.predicate = NSPredicate(format: "ifUpdated == false OR ifUpdated = nil")
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \LocationRecord.timestamp, ascending: false)]
+        request.fetchLimit = 30
+
+        do {
+            let notUpdatedRecords = try context.fetch(request)
+            print("Found \(notUpdatedRecords.count) records to upload") // 新增打印
+            guard !notUpdatedRecords.isEmpty else { return }
+            
+            // 构建JSON数据
+            let formatter = ISO8601DateFormatter()
+            
+            let dataArray: [[String: Any]] = notUpdatedRecords.map { record in
+                let lat = record.latitude
+                let lon = record.longitude
+                let gpsVal = record.gpsAccuracy != nil ? "\(record.gpsAccuracy!.doubleValue)" : "N/A"
+                let isHomeVal = record.isHome ? 1 : 0
+                let timeStr = record.timestamp != nil ? formatter.string(from: record.timestamp!) : "N/A"
+                
+                return [
+                    "latitude": lat,
+                    "longitude": lon,
+                    "gpsAccuracy": gpsVal,
+                    "isHome": isHomeVal,
+                    "timestamp": timeStr
+                ]
+            }
+            
+            guard let jsonData = try? JSONSerialization.data(withJSONObject: dataArray, options: []) else {
+                return
+            }
+            
+            // 构建请求
+            var requestURL = URLRequest(url: URL(string: "https://httpbin.org/post")!)
+            requestURL.httpMethod = "POST"
+            requestURL.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            requestURL.httpBody = jsonData
+            
+            let task = URLSession.shared.dataTask(with: requestURL) { [weak self] data, response, error in
+                guard let self = self else { return }
+                
+                if let error = error {
+                    print("Upload error: \(error)")
+                    return
+                }
+                
+                guard let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200 else {
+                    print("Upload failed, non-200 status code")
+                    return
+                }
+                
+                // 上传成功，将notUpdatedRecords的ifUpdated设为true
+                self.context.perform {
+                    for rec in notUpdatedRecords {
+                        rec.ifUpdated = true
+                    }
+                    
+                    do {
+                        try self.context.save()
+                        print("Successfully updated records as ifUpdated = true")
+                    } catch {
+                        print("Error updating records after upload: \(error)")
+                    }
+                }
+            }
+            
+            task.resume()
+        } catch {
+            print("Fetch not updated records error: \(error)")
+        }
     }
 
+    private func saveLocationRecordFromVisit(_ visit: CLVisit) {
+        let coordinate = visit.coordinate
+        let timestamp = visit.arrivalDate == Date.distantPast ? Date() : visit.arrivalDate
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        
+        let record = LocationRecord(context: context)
+        record.timestamp = timestamp
+        record.latitude = coordinate.latitude
+        record.longitude = coordinate.longitude
+        record.gpsAccuracy = nil
+        
+        if let home = homeLocation {
+            let homeCoordinate = CLLocation(latitude: home.latitude, longitude: home.longitude)
+            let distance = location.distance(from: homeCoordinate)
+            record.distanceFromHome = distance
+            record.isHome = distance <= home.radius
+        } else {
+            record.distanceFromHome = 0
+            record.isHome = false
+        }
+
+        do {
+            try context.save()
+        } catch {
+            print("Error saving location record from visit: \(error)")
+        }
+    }
     
     private func updateAuthorizationStatus(_ status: CLAuthorizationStatus) {
         DispatchQueue.main.async {
@@ -167,7 +308,7 @@ class LocationManager: NSObject, ObservableObject {
             self.isAuthorized = (status == .authorizedAlways || status == .authorizedWhenInUse)
             
             if status == .authorizedAlways {
-                self.locationManager.startMonitoringSignificantLocationChanges()
+                self.locationManager.startMonitoringVisits()
                 self.scheduleBackgroundTask()
             } else {
                 self.locationManager.stopMonitoringSignificantLocationChanges()
@@ -199,12 +340,14 @@ extension LocationManager: CLLocationManagerDelegate {
             self.currentLocation = location
             self.updateCurrentLocationStatus(for: location)
         }
-        // 不在这里立即写入CoreData，因为定时器会定期写入，无论位置变化与否
-        // 如需立即写入，也可在这里调用saveLocationRecord(location)多次记录
-        // 但为了与定时机制统一，可以保持在timer中定期写入。
+        // 后台任务或前台timer定期写入，无需在此立即写入
     }
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
         print("Location update failed: \(error)")
+    }
+    
+    func locationManager(_ manager: CLLocationManager, didVisit visit: CLVisit) {
+        saveLocationRecordFromVisit(visit)
     }
 }

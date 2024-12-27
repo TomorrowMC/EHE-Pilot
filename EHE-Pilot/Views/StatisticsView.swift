@@ -14,9 +14,6 @@ struct StatisticsView: View {
     @State private var selectedDate = Date()
     @State private var records: [LocationRecord] = []
     
-    @State private var showShareSheet = false
-    @State private var exportedURL: URL? = nil
-    
     private let context = PersistenceController.shared.container.viewContext
     
     var totalTimeAway: TimeInterval {
@@ -26,12 +23,10 @@ struct StatisticsView: View {
         let sortedRecords = records.sorted { ($0.timestamp ?? Date.distantPast) < ($1.timestamp ?? Date.distantPast) }
         for location in sortedRecords {
             if !location.isHome {
-                // 第一次离家时记录时间
                 if lastHomeTime == nil {
                     lastHomeTime = location.timestamp
                 }
             } else {
-                // 回家后计算本次离家时段
                 if let last = lastHomeTime, let currentTimestamp = location.timestamp {
                     timeAway += currentTimestamp.timeIntervalSince(last)
                     lastHomeTime = nil
@@ -39,7 +34,6 @@ struct StatisticsView: View {
             }
         }
         
-        // 如果还在外面，则计算直到当前时间（如果是今天用当前时间，否则用当日结束时间）
         if let last = lastHomeTime {
             let endTime = isToday(selectedDate) ? Date() : endOfDay(for: selectedDate)
             timeAway += endTime.timeIntervalSince(last)
@@ -135,6 +129,14 @@ struct StatisticsView: View {
                                             .font(.subheadline)
                                             .foregroundColor(.primary)
                                         Spacer()
+                                        // 根据ifUpdated显示标识
+                                        if record.ifUpdated {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(.green)
+                                        } else {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundColor(.red)
+                                        }
                                     }
                                     
                                     HStack {
@@ -180,8 +182,9 @@ struct StatisticsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Export") {
-                        exportAsJSON()
+                    Button("Upload") {
+                        // 点击后调用上传逻辑
+                        LocationManager.shared.attemptUploadRecords()
                     }
                 }
             }
@@ -189,11 +192,6 @@ struct StatisticsView: View {
             .onAppear {
                 fetchRecords(for: selectedDate)
             }
-            .sheet(isPresented: $showShareSheet, content: {
-                if let url = exportedURL {
-                    ActivityView(activityItems: [url])
-                }
-            })
         }
     }
     
@@ -246,55 +244,4 @@ struct StatisticsView: View {
     private func isToday(_ date: Date) -> Bool {
         Calendar.current.isDateInToday(date)
     }
-    
-    private func exportAsJSON() {
-        let formatter = ISO8601DateFormatter()
-        
-        // 将复杂表达式分解，减轻编译器负担
-        let dataArray = records.map { record -> [String: Any] in
-            let lat = record.latitude
-            let lon = record.longitude
-            
-            let gpsVal: String
-            if let accuracy = record.gpsAccuracy {
-                gpsVal = String(format: "%.1f", accuracy.doubleValue)
-            } else {
-                gpsVal = "N/A"
-            }
-            
-            let isHomeVal = record.isHome ? 1 : 0
-            let timeStr = record.timestamp != nil ? formatter.string(from: record.timestamp!) : "N/A"
-            
-            return [
-                "latitude": lat,
-                "longitude": lon,
-                "gpsAccuracy": gpsVal,
-                "isHome": isHomeVal,
-                "timestamp": timeStr
-            ]
-        }
-        
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: dataArray, options: [.prettyPrinted])
-            let fileName = "export-\(Int(Date().timeIntervalSince1970)).json"
-            let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
-            try jsonData.write(to: tempURL)
-            self.exportedURL = tempURL
-            self.showShareSheet = true
-        } catch {
-            print("Error exporting JSON: \(error)")
-        }
-    }
-}
-
-// 使用UIActivityViewController展示分享面板
-struct ActivityView: UIViewControllerRepresentable {
-    let activityItems: [Any]
-    let applicationActivities: [UIActivity]? = nil
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: activityItems, applicationActivities: applicationActivities)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

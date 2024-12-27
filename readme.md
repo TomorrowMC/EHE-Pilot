@@ -96,7 +96,7 @@ LocationTracker/
 - **Info.plist:**  
   Configured with:
   - `UIBackgroundModes` including `location`, `fetch`, `processing`
-  - `BGTaskSchedulerPermittedIdentifiers` with `com.yourdomain.locationUpdate`
+  - `BGTaskSchedulerPermittedIdentifiers` with `com.EHE-Pilot.LocationUpdate`
   - `NSLocationAlwaysAndWhenInUseUsageDescription`, `NSLocationWhenInUseUsageDescription`
   
 - **BGTaskScheduler:**  

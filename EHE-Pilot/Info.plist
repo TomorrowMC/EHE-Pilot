@@ -10,7 +10,7 @@
 	</array>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
-		<string>com.yourdomain.locationUpdate</string>
+		<string>com.EHE-Pilot.LocationUpdate</string>
 	</array>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>We need background location access to track your time spent away from home.</string>
@@ -18,5 +18,11 @@
 	<string>We need background location access to track your time spent away from home.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>We need location access while using the app to track your activity range.</string>
+    <key>NSMotionUsageDescription</key>
+    <string>This app uses motion data to adjust location update frequency based on your activity.</string>
+    <key>NSHealthShareUsageDescription</key>
+    <string>analyze your health data and provide insights"].</string>
+    <key>NSHealthUpdateUsageDescription</key>
+    <string>Your app needs to update health data to [具体用途，如 "record your activity and monitor your fitness goals"].</string>
 </dict>
 </plist>

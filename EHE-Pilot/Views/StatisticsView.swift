@@ -42,6 +42,37 @@ struct StatisticsView: View {
         return timeAway
     }
     
+    // 添加一个计算户外时间的计算属性
+    var totalTimeOutdoors: TimeInterval {
+        var timeOutdoors: TimeInterval = 0
+        var lastOutdoorsTime: Date?
+        
+        let sortedRecords = records.sorted { ($0.timestamp ?? Date.distantPast) < ($1.timestamp ?? Date.distantPast) }
+        
+        for location in sortedRecords {
+            let isOutdoors = !location.isHome && (location.gpsAccuracy == nil || location.gpsAccuracy?.doubleValue ?? 0 < 4.0)
+            
+            if isOutdoors {
+                if lastOutdoorsTime == nil {
+                    lastOutdoorsTime = location.timestamp
+                }
+            } else {
+                if let last = lastOutdoorsTime, let currentTimestamp = location.timestamp {
+                    timeOutdoors += currentTimestamp.timeIntervalSince(last)
+                    lastOutdoorsTime = nil
+                }
+            }
+        }
+        
+        // 如果最后一段还在户外，计算到当前时间
+        if let last = lastOutdoorsTime {
+            let endTime = isToday(selectedDate) ? Date() : endOfDay(for: selectedDate)
+            timeOutdoors += endTime.timeIntervalSince(last)
+        }
+        
+        return timeOutdoors
+    }
+    
     private let dateFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateStyle = .none
@@ -99,11 +130,14 @@ struct StatisticsView: View {
                     VStack(spacing: 12) {
                         statisticsRow(title: "Time Away", value: formatTimeInterval(totalTimeAway))
                         Divider()
+                        statisticsRow(title: "Time Outdoors",
+                                    value: formatTimeInterval(totalTimeOutdoors))
+                        Divider()
                         statisticsRow(title: "Location Points", value: "\(records.count)")
                         Divider()
                         statisticsRow(title: "Current Status",
-                                      value: locationManager.currentLocationStatus ? "At Home" : "Away",
-                                      valueColor: locationManager.currentLocationStatus ? .green : .orange)
+                                    value: locationManager.currentLocationStatus ? "At Home" : "Away",
+                                    valueColor: locationManager.currentLocationStatus ? .green : .orange)
                     }
                     .padding()
                     .background(.regularMaterial)
@@ -145,15 +179,18 @@ struct StatisticsView: View {
                                                 .foregroundColor(.green)
                                                 .font(.caption)
                                         } else {
-                                            Label("Away", systemImage: "figure.walk")
-                                                .foregroundColor(.orange)
+                                            let isOutdoors = record.gpsAccuracy == nil || record.gpsAccuracy?.doubleValue ?? 0 < 4.0
+                                            Label(isOutdoors ? "Outdoors" : "Indoor",
+                                                  systemImage: isOutdoors ? "sun.max.fill" : "building.2.fill")
+                                                .foregroundColor(isOutdoors ? .orange : .blue)
                                                 .font(.caption)
                                         }
                                         Spacer()
                                         if let accuracy = record.gpsAccuracy {
                                             Text("GPS: \(accuracy.doubleValue, specifier: "%.1f")m")
                                                 .font(.caption2)
-                                                .foregroundColor(.secondary)
+                                                .foregroundColor(accuracy.doubleValue < 4.0 ? .green :
+                                                               accuracy.doubleValue < 10.0 ? .orange : .red)
                                         } else {
                                             Text("GPS: N/A")
                                                 .font(.caption2)

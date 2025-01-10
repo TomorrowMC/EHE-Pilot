@@ -37,10 +37,11 @@ class LocationManager: NSObject, ObservableObject {
     
     private func setupLocationManager() {
         locationManager.delegate = self
-        locationManager.desiredAccuracy = currentAccuracy
+        locationManager.desiredAccuracy = kCLLocationAccuracyBest  // 始终使用最高精度
+        locationManager.activityType = .fitness  // 更适合追踪运动状态
         locationManager.showsBackgroundLocationIndicator = false
         locationManager.pausesLocationUpdatesAutomatically = false
-        locationManager.distanceFilter = kCLDistanceFilterNone
+        locationManager.distanceFilter = 5  // 每5米更新一次位置
         authorizationStatus = locationManager.authorizationStatus
         updateAuthorizationStatus(locationManager.authorizationStatus)
     }
@@ -61,12 +62,12 @@ class LocationManager: NSObject, ObservableObject {
         
         if moving {
             currentAccuracy = kCLLocationAccuracyBest
-            // 示例：用户在运动时 2分钟一次
-            currentForegroundFrequency = 2 * 60
+            currentForegroundFrequency = 120  // 移动时30秒更新一次
+            locationManager.distanceFilter = 20  // 移动时每5米更新
         } else {
-            currentAccuracy = kCLLocationAccuracyHundredMeters
-            // 用户静止时 10分钟一次
-            currentForegroundFrequency = 10 * 60
+            currentAccuracy = kCLLocationAccuracyNearestTenMeters  // 静止时稍微降低精度，但不要太低
+            currentForegroundFrequency = 8 * 60  // 静止时5分钟更新一次
+            locationManager.distanceFilter = 100  // 静止时每20米更新
         }
         
         locationManager.desiredAccuracy = currentAccuracy
@@ -169,8 +170,31 @@ class LocationManager: NSObject, ObservableObject {
         }
     }
     
+    // 增加位置过滤逻辑
+    private func isValidLocation(_ location: CLLocation) -> Bool {
+        // 检查水平精度是否在合理范围内
+        if location.horizontalAccuracy < 0 || location.horizontalAccuracy > 100 {
+            return false
+        }
+        
+        // 检查时间戳是否是最近的
+        let timeThreshold = 10.0 // 10秒
+        if abs(location.timestamp.timeIntervalSinceNow) > timeThreshold {
+            return false
+        }
+        
+        return true
+    }
+    
     // 在saveLocationRecord中设置ifUpdated = false
     private func saveLocationRecord(_ location: CLLocation) {
+        if location.horizontalAccuracy <= 0 {
+            // 如果精度无效，请求一次高精度更新
+            locationManager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+            locationManager.requestLocation()
+            return
+        }
+        
         let record = LocationRecord(context: context)
         record.timestamp = location.timestamp
         record.latitude = location.coordinate.latitude

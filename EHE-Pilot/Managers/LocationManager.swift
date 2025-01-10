@@ -56,23 +56,22 @@ class LocationManager: NSObject, ObservableObject {
     }
     
     private func adjustLocationPolicy(forMoving moving: Bool) {
-        // 当用户运动时，提高精度，不降低频率（保持30秒）
-        // 当用户静止时，降低精度或增加定位间隔，比如改为60秒一次。
+        // 当用户运动时，提高精度
+        // 当用户静止时，降低精度或增加定位间隔
         
         if moving {
-            // 用户在运动：高精度、更新间隔不变
             currentAccuracy = kCLLocationAccuracyBest
-            currentForegroundFrequency = 2*60
+            // 示例：用户在运动时 2分钟一次
+            currentForegroundFrequency = 2 * 60
         } else {
-            // 用户静止：降低精度（百米级别即可），减少更新频率
             currentAccuracy = kCLLocationAccuracyHundredMeters
-            currentForegroundFrequency = 10*60
+            // 用户静止时 10分钟一次
+            currentForegroundFrequency = 10 * 60
         }
         
-        // 应用新的策略
         locationManager.desiredAccuracy = currentAccuracy
         
-        // 如果正在前台更新，需要重启Timer
+        // 重启Timer
         if updateTimer != nil {
             stopForegroundUpdates()
             startForegroundUpdates()
@@ -177,7 +176,7 @@ class LocationManager: NSObject, ObservableObject {
         record.latitude = location.coordinate.latitude
         record.longitude = location.coordinate.longitude
         record.gpsAccuracy = NSNumber(value: location.horizontalAccuracy)
-        record.ifUpdated = false // 新增这一行，初始为false
+        record.ifUpdated = false // 初始为false
         
         if let home = homeLocation {
             let homeCoordinate = CLLocation(latitude: home.latitude, longitude: home.longitude)
@@ -199,37 +198,65 @@ class LocationManager: NSObject, ObservableObject {
         attemptUploadRecords()
     }
     
+    // 将地理位置JSON改为Open mHealth "Geoposition"格式
     func attemptUploadRecords() {
         let request: NSFetchRequest<LocationRecord> = LocationRecord.fetchRequest()
         request.predicate = NSPredicate(format: "ifUpdated == false OR ifUpdated = nil")
+        // 根据需求，你可以改为 ascending 或 descending
         request.sortDescriptors = [NSSortDescriptor(keyPath: \LocationRecord.timestamp, ascending: false)]
         request.fetchLimit = 30
 
         do {
             let notUpdatedRecords = try context.fetch(request)
-            print("Found \(notUpdatedRecords.count) records to upload") // 新增打印
+            print("Found \(notUpdatedRecords.count) records to upload")
             guard !notUpdatedRecords.isEmpty else { return }
             
-            // 构建JSON数据
-            let formatter = ISO8601DateFormatter()
+            let isoFormatter = ISO8601DateFormatter()
+            isoFormatter.timeZone = TimeZone(secondsFromGMT: 0) // or userTimeZone if needed
             
-            let dataArray: [[String: Any]] = notUpdatedRecords.map { record in
-                let lat = record.latitude
-                let lon = record.longitude
-                let gpsVal = record.gpsAccuracy != nil ? "\(record.gpsAccuracy!.doubleValue)" : "N/A"
-                let isHomeVal = record.isHome ? 1 : 0
-                let timeStr = record.timestamp != nil ? formatter.string(from: record.timestamp!) : "N/A"
-                
-                return [
-                    "latitude": lat,
-                    "longitude": lon,
-                    "gpsAccuracy": gpsVal,
-                    "isHome": isHomeVal,
-                    "timestamp": timeStr
+            // 构建Open mHealth Geoposition数组
+            let geopositionArray: [[String: Any]] = notUpdatedRecords.map { record in
+                // latitude / longitude
+                let latitudeObj: [String: Any] = [
+                    "value": record.latitude,
+                    "unit": "deg"
                 ]
+                let longitudeObj: [String: Any] = [
+                    "value": record.longitude,
+                    "unit": "deg"
+                ]
+                
+                // effective_time_frame
+                let timeStr = record.timestamp != nil
+                    ? isoFormatter.string(from: record.timestamp!)
+                    : "N/A"
+                
+                let effectiveTimeFrame: [String: Any] = [
+                    "date_time": timeStr
+                ]
+                
+                // (可选) accuracy视为extension字段
+                // (可选) isHome也放在 extension
+                var geoDict: [String: Any] = [
+                    "latitude": latitudeObj,
+                    "longitude": longitudeObj,
+                    "effective_time_frame": effectiveTimeFrame
+                ]
+                
+                // 如果想加一个自定义扩展, 例如 "omh_extension_accuracy"
+                if let gpsAccNum = record.gpsAccuracy {
+                    let gpsAccuracyVal = gpsAccNum.doubleValue
+                    geoDict["omh_extension_accuracy"] = gpsAccuracyVal
+                }
+                
+                // 如果想加 isHome
+                geoDict["omh_extension_isHome"] = record.isHome
+                
+                return geoDict
             }
             
-            guard let jsonData = try? JSONSerialization.data(withJSONObject: dataArray, options: []) else {
+            guard let jsonData = try? JSONSerialization.data(withJSONObject: geopositionArray, options: [.prettyPrinted]) else {
+                print("Failed to convert geoposition array to JSON data")
                 return
             }
             
@@ -329,6 +356,7 @@ class LocationManager: NSObject, ObservableObject {
     }
 }
 
+// MARK: - CLLocationManagerDelegate
 extension LocationManager: CLLocationManagerDelegate {
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         updateAuthorizationStatus(manager.authorizationStatus)
@@ -340,7 +368,7 @@ extension LocationManager: CLLocationManagerDelegate {
             self.currentLocation = location
             self.updateCurrentLocationStatus(for: location)
         }
-        // 后台任务或前台timer定期写入，无需在此立即写入
+        // 不在这里立即写入CoreData，因为前台timer或后台task已处理
     }
     
     func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {

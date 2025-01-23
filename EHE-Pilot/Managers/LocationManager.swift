@@ -19,6 +19,10 @@ class LocationManager: NSObject, ObservableObject {
     @Published var homeLocation: HomeLocation?
     @Published var currentLocationStatus: Bool = false
     
+    // 状态追踪属性
+    @Published var isUploading = false
+    @Published var lastUploadStatus: (success: Bool, message: String)?
+    
     private let locationManager = CLLocationManager()
     private let context = PersistenceController.shared.container.viewContext
     private var updateTimer: Timer?
@@ -226,71 +230,104 @@ class LocationManager: NSObject, ObservableObject {
     func attemptUploadRecords() {
         let request: NSFetchRequest<LocationRecord> = LocationRecord.fetchRequest()
         request.predicate = NSPredicate(format: "ifUpdated == false OR ifUpdated = nil")
-        // 根据需求，你可以改为 ascending 或 descending
         request.sortDescriptors = [NSSortDescriptor(keyPath: \LocationRecord.timestamp, ascending: false)]
-        request.fetchLimit = 30
-
+        request.fetchLimit = 10
+        
         do {
             let notUpdatedRecords = try context.fetch(request)
             print("Found \(notUpdatedRecords.count) records to upload")
             guard !notUpdatedRecords.isEmpty else { return }
             
-            let isoFormatter = ISO8601DateFormatter()
-            isoFormatter.timeZone = TimeZone(secondsFromGMT: 0) // or userTimeZone if needed
+            // 构建FHIR Bundle
+            var bundleEntries: [[String: Any]] = []
             
-            // 构建Open mHealth Geoposition数组
-            let geopositionArray: [[String: Any]] = notUpdatedRecords.map { record in
-                // latitude / longitude
-                let latitudeObj: [String: Any] = [
-                    "value": record.latitude,
-                    "unit": "deg"
-                ]
-                let longitudeObj: [String: Any] = [
-                    "value": record.longitude,
-                    "unit": "deg"
-                ]
-                
-                // effective_time_frame
-                let timeStr = record.timestamp != nil
-                    ? isoFormatter.string(from: record.timestamp!)
-                    : "N/A"
-                
-                let effectiveTimeFrame: [String: Any] = [
-                    "date_time": timeStr
+            for record in notUpdatedRecords {
+                // 构建位置数据
+                var locationData: [String: Any] = [
+                    "latitude": [
+                        "value": record.latitude,
+                        "unit": "deg"
+                    ],
+                    "longitude": [
+                        "value": record.longitude,
+                        "unit": "deg"
+                    ],
+                    "positioning_system": "GPS",
+                    "effective_time_frame": [
+                        "date_time": ISO8601DateFormatter().string(from: record.timestamp ?? Date())
+                    ]
                 ]
                 
-                // (可选) accuracy视为extension字段
-                // (可选) isHome也放在 extension
-                var geoDict: [String: Any] = [
-                    "latitude": latitudeObj,
-                    "longitude": longitudeObj,
-                    "effective_time_frame": effectiveTimeFrame
-                ]
-                
-                // 如果想加一个自定义扩展, 例如 "omh_extension_accuracy"
-                if let gpsAccNum = record.gpsAccuracy {
-                    let gpsAccuracyVal = gpsAccNum.doubleValue
-                    geoDict["omh_extension_accuracy"] = gpsAccuracyVal
+                // 如果有GPS精度数据，添加卫星信号强度
+                if let accuracy = record.gpsAccuracy?.doubleValue {
+                    locationData["satellite_signal_strengths"] = [
+                        ["value": Int(accuracy), "unit": "dB"]
+                    ]
                 }
                 
-                // 如果想加 isHome
-                geoDict["omh_extension_isHome"] = record.isHome
-                
-                return geoDict
+                // 修改这部分代码
+                do {
+                    let jsonData = try JSONSerialization.data(withJSONObject: locationData)
+                    // 直接使用base64EncodedString()，不要再转换为Data
+                    let base64String = jsonData.base64EncodedString()
+                    
+                    // 构建FHIR Observation资源
+                    let observationEntry: [String: Any] = [
+                        "resource": [
+                            "resourceType": "Observation",
+                            "status": "final",
+                            "code": [
+                                "coding": [
+                                    [
+                                        "system": "https://w3id.org/openmhealth",
+                                        "code": "omh:geoposition:1.0"
+                                    ]
+                                ]
+                            ],
+                            "subject": [
+                                "reference": "Patient/40001"
+                            ],
+                            "device": [
+                                "reference": "Device/70001"
+                            ],
+                            "valueAttachment": [
+                                "contentType": "application/json",
+                                "data": base64String  // 直接使用base64字符串
+                            ]
+                        ],
+                        "request": [
+                            "method": "POST",
+                            "url": "Observation"
+                        ]
+                    ]
+                    
+                    bundleEntries.append(observationEntry)
+                    
+                } catch {
+                    print("Error serializing location data: \(error)")
+                    continue
+                }
             }
             
-            guard let jsonData = try? JSONSerialization.data(withJSONObject: geopositionArray, options: [.prettyPrinted]) else {
-                print("Failed to convert geoposition array to JSON data")
+            // 构建完整的FHIR Bundle
+            let bundle: [String: Any] = [
+                "resourceType": "Bundle",
+                "type": "batch",
+                "entry": bundleEntries
+            ]
+            
+            // 发送请求
+            guard let jsonData = try? JSONSerialization.data(withJSONObject: bundle) else {
+                print("Failed to serialize bundle")
                 return
             }
             
-            // 构建请求
-            var requestURL = URLRequest(url: URL(string: "https://httpbin.org/post")!)
-            requestURL.httpMethod = "POST"
-            requestURL.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            requestURL.httpBody = jsonData
+            var request = URLRequest(url: URL(string: "https://httpbin.org/post")!)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = jsonData
             
-            let task = URLSession.shared.dataTask(with: requestURL) { [weak self] data, response, error in
+            let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
                 guard let self = self else { return }
                 
                 if let error = error {
@@ -304,15 +341,15 @@ class LocationManager: NSObject, ObservableObject {
                     return
                 }
                 
-                // 上传成功，将notUpdatedRecords的ifUpdated设为true
+                // 标记记录为已更新
                 self.context.perform {
-                    for rec in notUpdatedRecords {
-                        rec.ifUpdated = true
+                    for record in notUpdatedRecords {
+                        record.ifUpdated = true
                     }
                     
                     do {
                         try self.context.save()
-                        print("Successfully updated records as ifUpdated = true")
+                        print("Successfully marked records as updated")
                     } catch {
                         print("Error updating records after upload: \(error)")
                     }
@@ -320,11 +357,106 @@ class LocationManager: NSObject, ObservableObject {
             }
             
             task.resume()
+            
         } catch {
-            print("Fetch not updated records error: \(error)")
+            print("Fetch error: \(error)")
         }
     }
+    
+    // 在LocationManager类中添加
 
+    
+
+    func getLatestRecordsJSON() -> String? {
+        let request: NSFetchRequest<LocationRecord> = LocationRecord.fetchRequest()
+        request.sortDescriptors = [NSSortDescriptor(keyPath: \LocationRecord.timestamp, ascending: false)]
+        request.fetchLimit = 5
+        
+        do {
+            let records = try context.fetch(request)
+            guard !records.isEmpty else { return nil }
+            
+            var bundleEntries: [[String: Any]] = []
+            
+            for record in records {
+                var locationData: [String: Any] = [
+                    "latitude": [
+                        "value": record.latitude,
+                        "unit": "deg"
+                    ],
+                    "longitude": [
+                        "value": record.longitude,
+                        "unit": "deg"
+                    ],
+                    "positioning_system": "GPS",
+                    "effective_time_frame": [
+                        "date_time": ISO8601DateFormatter().string(from: record.timestamp ?? Date())
+                    ]
+                ]
+                
+                if let accuracy = record.gpsAccuracy?.doubleValue {
+                    locationData["satellite_signal_strengths"] = [
+                        ["value": Int(accuracy), "unit": "dB"]
+                    ]
+                }
+                
+                // 修改这部分的错误处理方式
+                do {
+                    let jsonData = try JSONSerialization.data(withJSONObject: locationData)
+                    let base64String = jsonData.base64EncodedString()
+                    
+                    let observationEntry: [String: Any] = [
+                        "resource": [
+                            "resourceType": "Observation",
+                            "status": "final",
+                            "code": [
+                                "coding": [
+                                    [
+                                        "system": "https://w3id.org/openmhealth",
+                                        "code": "omh:geoposition:1.0"
+                                    ]
+                                ]
+                            ],
+                            "subject": [
+                                "reference": "Patient/40001"
+                            ],
+                            "device": [
+                                "reference": "Device/70001"
+                            ],
+                            "valueAttachment": [
+                                "contentType": "application/json",
+                                "data": base64String
+                            ]
+                        ],
+                        "request": [
+                            "method": "POST",
+                            "url": "Observation"
+                        ]
+                    ]
+                    
+                    bundleEntries.append(observationEntry)
+                    
+                } catch {
+                    print("Error serializing location data: \(error)")
+                    continue
+                }
+            }
+            
+            let bundle: [String: Any] = [
+                "resourceType": "Bundle",
+                "type": "batch",
+                "entry": bundleEntries
+            ]
+            
+            let jsonData = try JSONSerialization.data(withJSONObject: bundle, options: .prettyPrinted)
+            return String(data: jsonData, encoding: .utf8)
+            
+        } catch {
+            print("Fetch error: \(error)")
+            return nil
+        }
+    }
+    
     private func saveLocationRecordFromVisit(_ visit: CLVisit) {
         let coordinate = visit.coordinate
         let timestamp = visit.arrivalDate == Date.distantPast ? Date() : visit.arrivalDate

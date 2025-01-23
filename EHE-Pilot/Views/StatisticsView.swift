@@ -13,6 +13,8 @@ struct StatisticsView: View {
     
     @State private var selectedDate = Date()
     @State private var records: [LocationRecord] = []
+    @State private var showShareSheet = false
+    @State private var shareURL: URL?
     
     private let context = PersistenceController.shared.container.viewContext
     
@@ -86,6 +88,29 @@ struct StatisticsView: View {
         df.timeStyle = .none
         return df
     }()
+    
+    
+    // 添加分享文件的方法
+    private func shareJSONFile() {
+        if let jsonString = LocationManager.shared.getLatestRecordsJSON() {
+            let tempDir = FileManager.default.temporaryDirectory
+            let fileName = "location_records_\(Int(Date().timeIntervalSince1970)).json"
+            let fileURL = tempDir.appendingPathComponent(fileName)
+            
+            do {
+                try jsonString.write(to: fileURL, atomically: true, encoding: .utf8)
+                shareURL = fileURL
+                showShareSheet = true
+                
+                // 触觉反馈
+                let generator = UIImpactFeedbackGenerator(style: .heavy)
+                generator.impactOccurred()
+            } catch {
+                print("Error creating JSON file: \(error)")
+            }
+        }
+    }
+    
     
     var body: some View {
         NavigationView {
@@ -219,16 +244,28 @@ struct StatisticsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Upload") {
-                        // 点击后调用上传逻辑
-                        LocationManager.shared.attemptUploadRecords()
-                    }
+                    uploadButton
                 }
             }
             .background(Color(UIColor.systemGroupedBackground).edgesIgnoringSafeArea(.all))
             .onAppear {
                 fetchRecords(for: selectedDate)
             }
+        }
+    }
+    
+    var uploadButton: some View {
+        Button {
+            // 修改为调用LocationManager的上传方法
+            LocationManager.shared.attemptUploadRecords()
+        } label: {
+            HStack {
+                Image(systemName: "arrow.up.circle")
+                Text("Upload")
+            }
+        }
+        .onLongPressGesture {
+            shareJSONFile()
         }
     }
     
@@ -281,4 +318,21 @@ struct StatisticsView: View {
     private func isToday(_ date: Date) -> Bool {
         Calendar.current.isDateInToday(date)
     }
+}
+
+
+// 添加ShareSheet结构体
+struct ShareSheet: UIViewControllerRepresentable {
+    let activityItems: [Any]
+    let applicationActivities: [UIActivity]? = nil
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(
+            activityItems: activityItems,
+            applicationActivities: applicationActivities)
+        
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }

@@ -16,79 +16,86 @@ struct SettingsView: View {
     @State private var csvFileURL: URL? // 用于存储导出后的CSV文件路径
     
     var body: some View {
-        Form {
-            Section(header: Text("Home Location")) {
-                if let home = locationManager.homeLocation {
-                    HStack {
-                        Text("Latitude")
-                        Spacer()
-                        Text(String(format: "%.4f", home.latitude))
+        NavigationStack{
+            Form {
+                Section(header: Text("Home Location")) {
+                    if let home = locationManager.homeLocation {
+                        HStack {
+                            Text("Latitude")
+                            Spacer()
+                            Text(String(format: "%.4f", home.latitude))
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        HStack {
+                            Text("Longitude")
+                            Spacer()
+                            Text(String(format: "%.4f", home.longitude))
+                                .foregroundColor(.secondary)
+                        }
+                        
+                        HStack {
+                            Text("Radius")
+                            Spacer()
+                            Text("\(Int(home.radius))m")
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        Text("No home location set")
                             .foregroundColor(.secondary)
                     }
                     
-                    HStack {
-                        Text("Longitude")
-                        Spacer()
-                        Text(String(format: "%.4f", home.longitude))
-                            .foregroundColor(.secondary)
+                    Button(action: {
+                        showingHomeSelector = true
+                    }) {
+                        Text(locationManager.homeLocation == nil ? "Set Home Location" : "Update Home Location")
+                    }
+                }
+                
+                Section(header: Text("App Settings")) {
+                    NavigationLink(destination: LocationUpdateFrequencyView()) {
+                        Text("Location Update Frequency")
                     }
                     
-                    HStack {
-                        Text("Radius")
-                        Spacer()
-                        Text("\(Int(home.radius))m")
-                            .foregroundColor(.secondary)
+                    Button(action: {
+                        showingResetAlert = true
+                    }) {
+                        Text("Reset All Data")
+                            .foregroundColor(.red)
                     }
-                } else {
-                    Text("No home location set")
-                        .foregroundColor(.secondary)
                 }
                 
-                Button(action: {
-                    showingHomeSelector = true
-                }) {
-                    Text(locationManager.homeLocation == nil ? "Set Home Location" : "Update Home Location")
-                }
-            }
-            
-            Section(header: Text("App Settings")) {
-                NavigationLink(destination: LocationUpdateFrequencyView()) {
-                    Text("Location Update Frequency")
-                }
-                
-                Button(action: {
-                    showingResetAlert = true
-                }) {
-                    Text("Reset All Data")
-                        .foregroundColor(.red)
-                }
-            }
-            
-            // 新增导出数据的Section
-            Section(header: Text("Export Data")) {
-                Button("Export CSV") {
-                    exportDataToCSV()
+                // 新增导出数据的Section
+                Section(header: Text("Export Data")) {
+                    Button("Export CSV") {
+                        exportDataToCSV()
+                    }
+                    
+                    if let fileURL = csvFileURL {
+                        ShareLink(item: fileURL, preview: SharePreview("Exported Data", image: Image(systemName: "doc"))) {
+                            Text("Share Exported CSV")
+                        }
+                    }
                 }
                 
-                // 当csvFileURL有值时，显示分享按钮
-                if let fileURL = csvFileURL {
-                    ShareLink(item: fileURL, preview: SharePreview("Exported Data", image: Image(systemName: "doc"))) {
-                        Text("Share Exported CSV")
+                Section(header: Text("Test OAuth")) {
+                    NavigationLink(destination: LoginTestView()) {
+                        Text("Test Login Flow")
                     }
                 }
             }
-        }
-        .navigationTitle("Settings")
-        .sheet(isPresented: $showingHomeSelector) {
-            HomeLocationSelectorView()
-        }
-        .alert("Reset Data", isPresented: $showingResetAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Reset", role: .destructive) {
-                // Add reset functionality here
+            .navigationTitle("Settings")
+            .sheet(isPresented: $showingHomeSelector) {
+                HomeLocationSelectorView()
             }
-        } message: {
-            Text("Are you sure you want to reset all location data? This action cannot be undone.")
+            .alert("Reset Data", isPresented: $showingResetAlert) {
+                Button("Cancel", role: .cancel) { }
+                Button("Reset", role: .destructive) {
+                    // Add reset functionality here
+                }
+            } message: {
+                Text("Are you sure you want to reset all location data? This action cannot be undone.")
+            }
         }
     }
     
@@ -96,7 +103,6 @@ struct SettingsView: View {
         let context = PersistenceController.shared.container.viewContext
         do {
             let data = try CSVExporter.exportAllRecords(context: context)
-            // 将CSV数据写入临时目录
             let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent("export.csv")
             try data.write(to: tempURL)
             csvFileURL = tempURL

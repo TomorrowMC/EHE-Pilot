@@ -7,6 +7,9 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D0258F052D4323A2000F16C7 /* AppAuth in Frameworks */ = {isa = PBXBuildFile; productRef = D0258F042D4323A2000F16C7 /* AppAuth */; };
+		D0258F072D4323A2000F16C7 /* AppAuthCore in Frameworks */ = {isa = PBXBuildFile; productRef = D0258F062D4323A2000F16C7 /* AppAuthCore */; };
+		D0258F092D4323A2000F16C7 /* AppAuthTV in Frameworks */ = {isa = PBXBuildFile; productRef = D0258F082D4323A2000F16C7 /* AppAuthTV */; };
 		D0FA0B052CFD425C0046D7BE /* readme.md in Resources */ = {isa = PBXBuildFile; fileRef = D0FA0B042CFD425C0046D7BE /* readme.md */; };
 /* End PBXBuildFile section */
 
@@ -41,6 +44,9 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D0258F092D4323A2000F16C7 /* AppAuthTV in Frameworks */,
+				D0258F052D4323A2000F16C7 /* AppAuth in Frameworks */,
+				D0258F072D4323A2000F16C7 /* AppAuthCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -84,6 +90,9 @@
 			);
 			name = "EHE-Pilot";
 			packageProductDependencies = (
+				D0258F042D4323A2000F16C7 /* AppAuth */,
+				D0258F062D4323A2000F16C7 /* AppAuthCore */,
+				D0258F082D4323A2000F16C7 /* AppAuthTV */,
 			);
 			productName = "EHE-Pilot";
 			productReference = D0FA0AB82CFD385F0046D7BE /* EHE-Pilot.app */;
@@ -113,6 +122,9 @@
 			);
 			mainGroup = D0FA0AAF2CFD385F0046D7BE;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				D0258F032D4323A2000F16C7 /* XCRemoteSwiftPackageReference "AppAuth-iOS" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D0FA0AB92CFD385F0046D7BE /* Products */;
 			projectDirPath = "";
@@ -158,8 +170,12 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "EHE-Pilot/Info.plist";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "需要在后台访问您的位置以记录您的活动范围";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "需要访问您的位置以记录您的活动范围";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "analyze your health data and provide insights\"].";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Your app needs to update health data to [具体用途，如 \"record your activity and monitor your fitness goals\"].";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "We need background location access to track your time spent away from home.";
+				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "We need background location access to track your time spent away from home.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need location access while using the app to track your activity range.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "This app uses motion data to adjust location update frequency based on your activity.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -191,8 +207,12 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "EHE-Pilot/Info.plist";
-				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "需要在后台访问您的位置以记录您的活动范围";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "需要访问您的位置以记录您的活动范围";
+				INFOPLIST_KEY_NSHealthShareUsageDescription = "analyze your health data and provide insights\"].";
+				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "Your app needs to update health data to [具体用途，如 \"record your activity and monitor your fitness goals\"].";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "We need background location access to track your time spent away from home.";
+				INFOPLIST_KEY_NSLocationAlwaysUsageDescription = "We need background location access to track your time spent away from home.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need location access while using the app to track your activity range.";
+				INFOPLIST_KEY_NSMotionUsageDescription = "This app uses motion data to adjust location update frequency based on your activity.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -352,6 +372,35 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		D0258F032D4323A2000F16C7 /* XCRemoteSwiftPackageReference "AppAuth-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/openid/AppAuth-iOS.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.7.6;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		D0258F042D4323A2000F16C7 /* AppAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D0258F032D4323A2000F16C7 /* XCRemoteSwiftPackageReference "AppAuth-iOS" */;
+			productName = AppAuth;
+		};
+		D0258F062D4323A2000F16C7 /* AppAuthCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D0258F032D4323A2000F16C7 /* XCRemoteSwiftPackageReference "AppAuth-iOS" */;
+			productName = AppAuthCore;
+		};
+		D0258F082D4323A2000F16C7 /* AppAuthTV */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = D0258F032D4323A2000F16C7 /* XCRemoteSwiftPackageReference "AppAuth-iOS" */;
+			productName = AppAuthTV;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = D0FA0AB02CFD385F0046D7BE /* Project object */;
 }

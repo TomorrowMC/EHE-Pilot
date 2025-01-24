@@ -11,6 +11,7 @@ import BackgroundTasks
 @main
 struct EHE_PilotApp: App {
     let persistenceController = PersistenceController.shared
+    @StateObject var authManager = AuthManager()
     @Environment(\.scenePhase) var scenePhase
 
     init() {
@@ -28,6 +29,13 @@ struct EHE_PilotApp: App {
         WindowGroup {
             MainView()
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
+                .environmentObject(authManager)
+                .onOpenURL { url in
+                    // 如果用 AppAuth，需要在这里处理回调
+                    if authManager.handleRedirectURL(url) {
+                        print("Handled OAuth callback.")
+                    }
+                }
         }
         .onChange(of: scenePhase) { newPhase in
             switch newPhase {

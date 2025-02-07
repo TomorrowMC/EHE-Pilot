@@ -21,60 +21,76 @@ struct StatisticsView: View {
     var totalTimeAway: TimeInterval {
         var timeAway: TimeInterval = 0
         var lastHomeTime: Date?
-        
+        var hasHomeRecord = false
+
         let sortedRecords = records.sorted { ($0.timestamp ?? Date.distantPast) < ($1.timestamp ?? Date.distantPast) }
+        let endTime = isToday(selectedDate) ? Date() : endOfDay(for: selectedDate) // 关键优化
+
         for location in sortedRecords {
-            if !location.isHome {
-                if lastHomeTime == nil {
-                    lastHomeTime = location.timestamp
-                }
-            } else {
+            if location.isHome {
+                hasHomeRecord = true
                 if let last = lastHomeTime, let currentTimestamp = location.timestamp {
                     timeAway += currentTimestamp.timeIntervalSince(last)
                     lastHomeTime = nil
                 }
+            } else {
+                if lastHomeTime == nil {
+                    lastHomeTime = location.timestamp
+                }
             }
         }
-        
+
+        // 处理全天在外的情况
+        if !hasHomeRecord, let firstRecord = sortedRecords.first, let firstTimestamp = firstRecord.timestamp {
+            timeAway = endTime.timeIntervalSince(firstTimestamp)
+            return timeAway
+        }
+
+        // 处理最后一条记录是 `Away` 的情况
         if let last = lastHomeTime {
-            let endTime = isToday(selectedDate) ? Date() : endOfDay(for: selectedDate)
             timeAway += endTime.timeIntervalSince(last)
         }
-        
+
         return timeAway
     }
-    
-    // 添加一个计算户外时间的计算属性
+
     var totalTimeOutdoors: TimeInterval {
         var timeOutdoors: TimeInterval = 0
         var lastOutdoorsTime: Date?
-        
+        var hasIndoorRecord = false
+
         let sortedRecords = records.sorted { ($0.timestamp ?? Date.distantPast) < ($1.timestamp ?? Date.distantPast) }
-        
+        let endTime = isToday(selectedDate) ? Date() : endOfDay(for: selectedDate) // 关键优化
+
         for location in sortedRecords {
             let isOutdoors = !location.isHome && (location.gpsAccuracy == nil || location.gpsAccuracy?.doubleValue ?? 0 < 4.0)
-            
+
             if isOutdoors {
                 if lastOutdoorsTime == nil {
                     lastOutdoorsTime = location.timestamp
                 }
             } else {
+                hasIndoorRecord = true
                 if let last = lastOutdoorsTime, let currentTimestamp = location.timestamp {
                     timeOutdoors += currentTimestamp.timeIntervalSince(last)
                     lastOutdoorsTime = nil
                 }
             }
         }
-        
-        // 如果最后一段还在户外，计算到当前时间
+
+        // 处理全天在户外的情况
+        if !hasIndoorRecord, let firstRecord = sortedRecords.first, let firstTimestamp = firstRecord.timestamp {
+            timeOutdoors = endTime.timeIntervalSince(firstTimestamp)
+            return timeOutdoors
+        }
+
+        // 处理最后一条记录是 `Outdoors` 的情况
         if let last = lastOutdoorsTime {
-            let endTime = isToday(selectedDate) ? Date() : endOfDay(for: selectedDate)
             timeOutdoors += endTime.timeIntervalSince(last)
         }
-        
+
         return timeOutdoors
     }
-    
     private let dateFormatter: DateFormatter = {
         let df = DateFormatter()
         df.dateStyle = .none

@@ -9,6 +9,7 @@
 import SwiftUI
 import MapKit
 import CoreData
+import UIKit
 
 
 struct MapContentView: View {
@@ -16,6 +17,7 @@ struct MapContentView: View {
     @Environment(\.managedObjectContext) private var viewContext
     
     @State private var selectedDate = Date()
+    @State private var showLocationPermissionAlert = false
     
     // 使用计算属性动态创建FetchRequest
     private var locationRecords: [LocationRecord] {
@@ -37,7 +39,7 @@ struct MapContentView: View {
     }
     
     @State private var region: MKCoordinateRegion = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 39.9042, longitude: 116.4074),
+        center: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
         span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
     )
     
@@ -148,9 +150,36 @@ struct MapContentView: View {
             .navigationBarHidden(true)
         }
         .onAppear {
+            // 初始化时先设置到默认位置（如果有当前位置）
             if let location = locationManager.currentLocation {
                 region.center = location.coordinate
             }
+            
+            // 0.5秒后自动定位到用户位置
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                if let location = locationManager.currentLocation {
+                    withAnimation {
+                        region.center = location.coordinate
+                    }
+                }
+            }
+            
+            // 5秒后检查并显示位置权限提示
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
+                if locationManager.authorizationStatus == .authorizedWhenInUse {
+                    showLocationPermissionAlert = true
+                }
+            }
+        }
+        .alert("'Always' Location Access Required", isPresented: $showLocationPermissionAlert) {
+            Button("Not Now", role: .cancel) {}
+            Button("Open Settings") {
+                if let settingsUrl = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(settingsUrl)
+                }
+            }
+        } message: {
+            Text("To better track your activity range, we need 'Always' location access permission.\n\nPlease change the location permission to 'Always' in Settings.")
         }
     }
     
@@ -172,3 +201,4 @@ struct MapContentView_Previews: PreviewProvider {
         }
     }
 }
+

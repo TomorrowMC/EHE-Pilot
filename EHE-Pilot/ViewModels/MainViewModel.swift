@@ -16,7 +16,7 @@ class MainViewModel: ObservableObject {
     
     init() {
         initialRegion = MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 39.9042, longitude: 116.4074),
+            center: CLLocationCoordinate2D(latitude: 40.7128, longitude: -74.0060),
             span: MKCoordinateSpan(latitudeDelta: 0.05, longitudeDelta: 0.05)
         )
         setupLocationTracking()

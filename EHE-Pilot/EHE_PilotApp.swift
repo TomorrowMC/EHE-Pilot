@@ -11,30 +11,36 @@ import BackgroundTasks
 @main
 struct EHE_PilotApp: App {
     let persistenceController = PersistenceController.shared
-    @StateObject var authManager = AuthManager()
     @Environment(\.scenePhase) var scenePhase
+    
+    // 使用AppDelegate单例
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    
+    // 环境对象
+    @StateObject private var locationManager = LocationManager.shared
 
     init() {
+        // 初始化LocationManager单例
         _ = LocationManager.shared
-        BGTaskScheduler.shared.register(forTaskWithIdentifier: "com.EHE-Pilot.LocationUpdate", using: nil) { task in
-            guard let bgTask = task as? BGAppRefreshTask else {
-                task.setTaskCompleted(success: false)
-                return
-            }
-            LocationManager.shared.handleBackgroundTask(bgTask)
-        }
+        
+        // 不再在这里注册背景任务，而是统一在AppDelegate中注册
     }
 
     var body: some Scene {
         WindowGroup {
             MainView()
+                .environmentObject(AppDelegate.shared.authManager) // 使用AppDelegate中的单例
+                .environmentObject(locationManager)
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
-                .environmentObject(authManager)
                 .onOpenURL { url in
-                    // 如果用 AppAuth，需要在这里处理回调
-                    if authManager.handleRedirectURL(url) {
+                    // 处理OAuth回调
+                    if AppDelegate.shared.authManager.handleRedirectURL(url) {
                         print("Handled OAuth callback.")
                     }
+                }
+                .onAppear {
+                    // 启动时设置位置服务
+                    setupLocationServices()
                 }
         }
         .onChange(of: scenePhase) { newPhase in
@@ -49,6 +55,15 @@ struct EHE_PilotApp: App {
                 break
             }
         }
-
+    }
+    
+    private func setupLocationServices() {
+        // 如果尚未授权，请求位置权限
+        if !locationManager.isAuthorized {
+            locationManager.requestPermission()
+        }
+        
+        // 启动位置更新
+        locationManager.startForegroundUpdates()
     }
 }

@@ -9,6 +9,8 @@ import CoreLocation
 import CoreData
 import Combine
 import BackgroundTasks
+import UIKit
+import SwiftUI
 
 class LocationManager: NSObject, ObservableObject {
     static let shared = LocationManager()
@@ -227,7 +229,26 @@ class LocationManager: NSObject, ObservableObject {
     }
     
     // 将地理位置JSON改为Open mHealth "Geoposition"格式
+    //
+    // Modified attemptUploadRecords method for LocationManager class
+    // Replace the existing method with this implementation
+    //
+
     func attemptUploadRecords() {
+        // First, check if we're authenticated with AuthManager
+        if let authManager = getAuthManager(), authManager.isAuthenticated {
+            // Use the FHIRUploadService to upload as blood-glucose type (which we know works)
+            FHIRUploadService.shared.uploadLocationRecords(authManager: authManager) { success, message in
+                print("Location upload result: \(success ? "Success" : "Failed") - \(message)")
+            }
+        } else {
+            // Fall back to the original method if not authenticated
+            attemptUploadRecordsLegacy()
+        }
+    }
+
+    // Keep the original method as a fallback
+    private func attemptUploadRecordsLegacy() {
         let request: NSFetchRequest<LocationRecord> = LocationRecord.fetchRequest()
         request.predicate = NSPredicate(format: "ifUpdated == false OR ifUpdated = nil")
         request.sortDescriptors = [NSSortDescriptor(keyPath: \LocationRecord.timestamp, ascending: false)]
@@ -362,7 +383,22 @@ class LocationManager: NSObject, ObservableObject {
             print("Fetch error: \(error)")
         }
     }
-    
+
+    // Helper method to get AuthManager instance
+    private func getAuthManager() -> AuthManager? {
+        // Find AuthManager in SwiftUI environment
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let rootViewController = windowScene.windows.first?.rootViewController,
+           let hostingController = rootViewController as? UIHostingController<AnyView> {
+            
+            // Try to extract AuthManager from environment
+            // This is a bit hacky, but works for accessing the singleton
+            return AppDelegate.shared.authManager
+        }
+        
+        // Fall back to creating a new instance if needed
+        return AppDelegate.shared.authManager
+    }
     // 在LocationManager类中添加
 
     

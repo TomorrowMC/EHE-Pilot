@@ -1,3 +1,11 @@
+//
+//  ConsentDebugTool.swift
+//  EHE-Pilot
+//
+//  Created by 胡逸飞 on 2025/3/13.
+//
+
+
 import SwiftUI
 import Foundation
 
@@ -6,7 +14,7 @@ struct ConsentDebugTool: View {
     @Environment(\.presentationMode) var presentationMode
     
     // Patient and study parameters
-    @State private var patientId = "40010"
+    @State private var patientId = "40001"
     @State private var studyId = "30001"
     @State private var isLoading = false
     @State private var debugLogs: [DebugLogEntry] = []

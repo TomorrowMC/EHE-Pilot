@@ -1,16 +1,9 @@
-//
-//  LocationDataPreviewView.swift
-//  EHE-Pilot
-//
-//  Created by 胡逸飞 on 2025/3/13.
-//
-
-
 import SwiftUI
 import CoreData
 
 struct LocationDataPreviewView: View {
     @StateObject private var locationUploadManager = LocationUploadManager.shared
+    @StateObject private var jhDataManager = JHDataExchangeManager.shared
     @EnvironmentObject var authManager: AuthManager
     @Environment(\.presentationMode) var presentationMode
     
@@ -22,9 +15,9 @@ struct LocationDataPreviewView: View {
     var body: some View {
         NavigationView {
             List {
-                Section(header: Text("可上传位置记录")) {
+                Section(header: Text("Uploadable Location Records")) {
                     if records.isEmpty {
-                        Text("没有未上传的位置记录")
+                        Text("No pending location records to upload")
                             .foregroundColor(.secondary)
                             .italic()
                     } else {
@@ -34,51 +27,83 @@ struct LocationDataPreviewView: View {
                     }
                 }
                 
-                Section(header: Text("预览FHIR数据")) {
+                Section(header: Text("Preview FHIR Data")) {
                     if records.isEmpty {
-                        Text("没有数据可预览")
+                        Text("No data to preview")
                             .foregroundColor(.secondary)
                             .italic()
                     } else {
-                        Button(action: {
-                            // 打印FHIR Bundle结构
-                            let bundle = locationUploadManager.createFHIRBundle(from: Array(records.prefix(3)))
-                            if let jsonData = try? JSONSerialization.data(withJSONObject: bundle, options: .prettyPrinted),
-                               let jsonString = String(data: jsonData, encoding: .utf8) {
-                                print("FHIR Bundle预览:\n\(jsonString)")
+                        VStack(alignment: .leading, spacing: 10) {
+                            Button(action: {
+                                // Print original FHIR Bundle structure
+                                let bundle = locationUploadManager.createFHIRBundle(from: Array(records.prefix(3)))
+                                if let jsonData = try? JSONSerialization.data(withJSONObject: bundle, options: .prettyPrinted),
+                                   let jsonString = String(data: jsonData, encoding: .utf8) {
+                                    print("Original FHIR Bundle Preview:\n\(jsonString)")
+                                }
+                            }) {
+                                Text("Print Original FHIR Bundle to Console")
+                                    .font(.caption)
                             }
-                        }) {
-                            Text("控制台打印FHIR Bundle预览")
-                                .font(.caption)
+                            
+                            Button(action: {
+                                // Print JH Data Exchange format FHIR Bundle
+                                let bundle = jhDataManager.createFHIRBundle(from: Array(records.prefix(3)))
+                                if let jsonData = try? JSONSerialization.data(withJSONObject: bundle, options: .prettyPrinted),
+                                   let jsonString = String(data: jsonData, encoding: .utf8) {
+                                    print("JH Data Exchange FHIR Bundle Preview:\n\(jsonString)")
+                                }
+                            }) {
+                                Text("Print JH Data Exchange FHIR Bundle to Console")
+                                    .font(.caption)
+                            }
                         }
                     }
                 }
                 
-                Section(header: Text("测试工具")) {
+                Section(header: Text("Test Tools")) {
                     Button(action: {
                         showingGenerateOptions = true
                     }) {
-                        Label("生成示例位置数据", systemImage: "plus.circle")
+                        Label("Generate Sample Location Data", systemImage: "plus.circle")
+                    }
+                    
+                    HStack {
+                        Button(action: {
+                            jhDataManager.generateSampleDataWithSimpleFormat(count: 2)
+                            fetchUnuploadedRecords()
+                        }) {
+                            Label("NYC Data", systemImage: "building.2")
+                        }
+                        .buttonStyle(.bordered)
+                        
+                        Button(action: {
+                            jhDataManager.generateSampleDataWithFullFormat(count: 2)
+                            fetchUnuploadedRecords()
+                        }) {
+                            Label("SF Data", systemImage: "sun.max")
+                        }
+                        .buttonStyle(.bordered)
                     }
                     
                     Button(action: {
                         showingDeleteConfirmation = true
                     }) {
-                        Label("删除所有位置记录", systemImage: "trash")
+                        Label("Delete All Location Records", systemImage: "trash")
                             .foregroundColor(.red)
                     }
                 }
             }
-            .navigationTitle("位置数据预览")
+            .navigationTitle("Location Data Preview")
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("刷新") {
+                    Button("Refresh") {
                         fetchUnuploadedRecords()
                     }
                 }
                 
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("关闭") {
+                    Button("Close") {
                         presentationMode.wrappedValue.dismiss()
                     }
                 }
@@ -88,9 +113,9 @@ struct LocationDataPreviewView: View {
             }
             .alert(isPresented: $showingDeleteConfirmation) {
                 Alert(
-                    title: Text("确认删除"),
-                    message: Text("确定要删除所有位置记录吗？此操作不可撤销。"),
-                    primaryButton: .destructive(Text("删除")) {
+                    title: Text("Confirm Deletion"),
+                    message: Text("Are you sure you want to delete all location records? This cannot be undone."),
+                    primaryButton: .destructive(Text("Delete")) {
                         SampleLocationGenerator.shared.clearAllLocationRecords()
                         fetchUnuploadedRecords()
                     },
@@ -106,22 +131,22 @@ struct LocationDataPreviewView: View {
     private var generateOptionsView: some View {
         NavigationView {
             Form {
-                Section(header: Text("生成示例位置数据")) {
-                    Stepper("生成数量: \(sampleCount)", value: $sampleCount, in: 1...50)
+                Section(header: Text("Generate Sample Location Data")) {
+                    Stepper("Number of samples: \(sampleCount)", value: $sampleCount, in: 1...50)
                     
                     Button(action: {
                         SampleLocationGenerator.shared.generateSampleLocationRecords(count: sampleCount)
                         showingGenerateOptions = false
                         fetchUnuploadedRecords()
                     }) {
-                        Text("生成")
+                        Text("Generate")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                 }
             }
-            .navigationTitle("生成设置")
-            .navigationBarItems(trailing: Button("取消") {
+            .navigationTitle("Generation Settings")
+            .navigationBarItems(trailing: Button("Cancel") {
                 showingGenerateOptions = false
             })
         }
@@ -130,7 +155,7 @@ struct LocationDataPreviewView: View {
     private func locationRecordRow(_ record: LocationRecord) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("坐标: \(record.latitude, specifier: "%.5f"), \(record.longitude, specifier: "%.5f")")
+                Text("Coordinates: \(record.latitude, specifier: "%.5f"), \(record.longitude, specifier: "%.5f")")
                     .font(.caption)
                     .bold()
                 
@@ -145,11 +170,11 @@ struct LocationDataPreviewView: View {
             
             HStack {
                 if record.isHome {
-                    Label("家", systemImage: "house.fill")
+                    Label("Home", systemImage: "house.fill")
                         .font(.caption)
                         .foregroundColor(.green)
                 } else {
-                    Label("外出", systemImage: "mappin.and.ellipse")
+                    Label("Away", systemImage: "mappin.and.ellipse")
                         .font(.caption)
                         .foregroundColor(.orange)
                 }
@@ -157,7 +182,7 @@ struct LocationDataPreviewView: View {
                 Spacer()
                 
                 if let accuracy = record.gpsAccuracy {
-                    Text("精度: \(accuracy.doubleValue, specifier: "%.1f")m")
+                    Text("Accuracy: \(accuracy.doubleValue, specifier: "%.1f")m")
                         .font(.caption)
                         .foregroundColor(accuracy.doubleValue < 10 ? .green : .orange)
                 }

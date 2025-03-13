@@ -6,14 +6,15 @@ class LocationUploadManager: ObservableObject {
     // 单例实例
     static let shared = LocationUploadManager()
     
-    // 发布状态供UI观察
+    // Published properties for UI updates
     @Published var isUploading = false
-    @Published var lastUploadStatus: String = "未上传"
+    @Published var lastUploadStatus: String = "Not uploaded"
     @Published var lastUploadTime: Date?
     
-    // 固定Patient ID和Device ID
-    private let patientId = "40001"
-    private let deviceId = "70001"
+    // Fixed Patient ID and Device ID
+    private let patientId = "40001"  // This is the default Patient ID
+    private let deviceId = "70001"   // This is the default Device ID
+    private let stellaParkPatientId = "40001" // Based on the example in the image, might be Stella Park's ID
     
     // 初始化
     private init() {}
@@ -63,7 +64,7 @@ class LocationUploadManager: ObservableObject {
                             "coding": [
                                 [
                                     "system": "https://w3id.org/openmhealth",
-                                    "code": "omh:geoposition:1.0"
+                                    "code": "omh:blood-glucose:4.0"
                                 ]
                             ]
                         ],

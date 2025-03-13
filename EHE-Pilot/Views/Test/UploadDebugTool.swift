@@ -19,7 +19,7 @@ struct UploadDebugTool: View {
     @State private var customHeaders: [String: String] = [
         "Authorization": "Bearer {token}" // Will be replaced with actual token
     ]
-    @State private var customPatientID = "40010"
+    @State private var customPatientID = "40001"
     @State private var showAdvancedOptions = false
     
     var body: some View {
@@ -170,10 +170,20 @@ struct UploadDebugTool: View {
         
         // Create the request
         var request = URLRequest(url: url)
-        request.httpMethod = "GET"
+        
+        // IMPORTANT: Use POST for FHIR endpoint, GET for others
+        if selectedEndpoint == 0 {
+            request.httpMethod = "POST"
+            // Add empty body for POST request to avoid "empty body" errors
+            request.httpBody = "{}".data(using: .utf8)
+            addLog(message: "Using POST method for FHIR endpoint", type: .info)
+        } else {
+            request.httpMethod = "GET"
+        }
         
         // Add authorization header
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
         addLog(message: "Sending request to \(url.absoluteString)", type: .info)
         

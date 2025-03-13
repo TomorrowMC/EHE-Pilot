@@ -6,18 +6,18 @@ class JHDataExchangeManager: ObservableObject {
     // 单例实例
     static let shared = JHDataExchangeManager()
     
-    // 发布状态供UI观察
+    // Published properties for UI updates
     @Published var isUploading = false
-    @Published var lastUploadStatus: String = "未上传"
+    @Published var lastUploadStatus: String = "Not uploaded"
     @Published var lastUploadTime: Date?
     
-    // 服务器配置
-    private let stellaPatientId = "40001"  // Stella Park的PatientID
-    private let deviceId = "70001"         // 设备ID
-    private let organizationId = "20001"   // JH Data Exchange的OrganizationID
-    private let studyId = "30001"          // Spezi的StudyID
+    // Server configuration
+    private let stellaPatientId = "40001"  // Stella Park's PatientID (updated)
+    private let deviceId = "70001"         // Device ID
+    private let organizationId = "20012"   // JH Data Exchange's OrganizationID (updated)
+    private let studyId = "30001"          // Spezi's StudyID
     
-    // 初始化
+    // Initialize
     private init() {}
     
     // 从CoreData获取位置记录
@@ -25,7 +25,7 @@ class JHDataExchangeManager: ObservableObject {
         let context = PersistenceController.shared.container.viewContext
         let request: NSFetchRequest<LocationRecord> = LocationRecord.fetchRequest()
         
-        // 只获取未上传过的记录
+        // Only get records that haven't been uploaded
         request.predicate = NSPredicate(format: "ifUpdated == %@", NSNumber(value: false))
         request.sortDescriptors = [NSSortDescriptor(keyPath: \LocationRecord.timestamp, ascending: false)]
         request.fetchLimit = limit
@@ -50,41 +50,41 @@ class JHDataExchangeManager: ObservableObject {
             if let jsonData = try? JSONSerialization.data(withJSONObject: geoPositionData),
                let base64String = jsonData.base64EncodedString().data(using: .utf8)?.base64EncodedString() {
                 
-                // 创建Entry对象
-                let entry: [String: Any] = [
-                    "resource": [
-                        "resourceType": "Observation",
-                        "status": "final",
-                        "subject": [
-                            "reference": "Patient/\(stellaPatientId)"
-                        ],
-                        "device": [
-                            "reference": "Device/\(deviceId)"
-                        ],
-                        "code": [
-                            "coding": [
-                                [
-                                    "system": "https://w3id.org/openmhealth",
-                                    "code": "omh:blood-glucose:4.0"
-                                ]
-                            ]
-                        ],
-                        "valueAttachment": [
-                            "contentType": "application/json",
-                            "data": base64String
-                        ],
-                        "identifier": [
+            // Create Entry object
+            let entry: [String: Any] = [
+                "resource": [
+                    "resourceType": "Observation",
+                    "status": "final",
+                    "subject": [
+                        "reference": "Patient/\(stellaPatientId)"
+                    ],
+                    "device": [
+                        "reference": "Device/\(deviceId)"
+                    ],
+                    "code": [
+                        "coding": [
                             [
-                                "value": UUID().uuidString,
-                                "system": "https://ehr.example.com"
+                                "system": "https://w3id.org/openmhealth",
+                                "code": "omh:blood-glucose:4.0"
                             ]
                         ]
                     ],
-                    "request": [
-                        "method": "POST",
-                        "url": "Observation"
+                    "valueAttachment": [
+                        "contentType": "application/json",
+                        "data": base64String
+                    ],
+                    "identifier": [
+                        [
+                            "value": UUID().uuidString,
+                            "system": "https://ehr.example.com"
+                        ]
                     ]
+                ],
+                "request": [
+                    "method": "POST",
+                    "url": "Observation"
                 ]
+            ]
                 
                 entries.append(entry)
             }
@@ -132,23 +132,23 @@ class JHDataExchangeManager: ObservableObject {
     
     // 上传数据到服务器
     func uploadLocationData(authManager: AuthManager, completion: @escaping (Bool, String) -> Void) {
-        // 确保已经登录
+        // Ensure authenticated
         guard authManager.isAuthenticated,
               let accessToken = authManager.currentAccessToken() else {
             DispatchQueue.main.async {
-                self.lastUploadStatus = "未授权，请先登录"
-                completion(false, "未授权，请先登录")
+                self.lastUploadStatus = "Not authorized, please login first"
+                completion(false, "Not authorized, please login first")
             }
             return
         }
         
-        // 获取位置记录
-        let records = fetchLocationRecords(limit: 5) // 每次上传5条记录
+        // Get location records
+        let records = fetchLocationRecords(limit: 5) // Upload 5 records at a time
         
         if records.isEmpty {
             DispatchQueue.main.async {
-                self.lastUploadStatus = "没有新的位置记录需要上传"
-                completion(false, "没有新的位置记录需要上传")
+                self.lastUploadStatus = "No new location records to upload"
+                completion(false, "No new location records to upload")
             }
             return
         }
@@ -156,13 +156,13 @@ class JHDataExchangeManager: ObservableObject {
         // 创建FHIR Bundle
         let bundle = createFHIRBundle(from: records)
         
-        // 准备API请求
-        // 使用基础URL，去掉路径中的 "/o"
+        // Prepare API request
+        // Use base URL, remove "/o" from path
         let baseURLString = authManager.issuerURL.absoluteString.replacingOccurrences(of: "/o", with: "")
         guard let fhirURL = URL(string: "\(baseURLString)/fhir/r5/") else {
             DispatchQueue.main.async {
-                self.lastUploadStatus = "无效的FHIR端点URL"
-                completion(false, "无效的FHIR端点URL")
+                self.lastUploadStatus = "Invalid FHIR endpoint URL"
+                completion(false, "Invalid FHIR endpoint URL")
             }
             return
         }
@@ -178,9 +178,9 @@ class JHDataExchangeManager: ObservableObject {
             let jsonData = try JSONSerialization.data(withJSONObject: bundle, options: [])
             request.httpBody = jsonData
             
-            // 打印请求数据以便调试
+            // Print request data for debugging
             if let jsonString = String(data: jsonData, encoding: .utf8) {
-                print("上传数据详情:")
+                print("Upload data details:")
                 print(jsonString)
             }
             
@@ -206,16 +206,16 @@ class JHDataExchangeManager: ObservableObject {
                         let statusCode = httpResponse.statusCode
                         
                         if (200...299).contains(statusCode) {
-                            // 成功上传，标记记录为已上传
+                            // Successfully uploaded, mark records as uploaded
                             self.markRecordsAsUploaded(records)
-                            self.lastUploadStatus = "成功上传 \(records.count) 条记录"
-                            completion(true, "成功上传 \(records.count) 条记录")
+                            self.lastUploadStatus = "Successfully uploaded \(records.count) records"
+                            completion(true, "Successfully uploaded \(records.count) records")
                         } else {
-                            var message = "上传失败，状态码: \(statusCode)"
+                            var message = "Upload failed, status code: \(statusCode)"
                             
                             if let data = data, let responseString = String(data: data, encoding: .utf8) {
-                                print("服务器响应: \(responseString)")
-                                message += ", 响应: \(responseString)"
+                                print("Server response: \(responseString)")
+                                message += ", response: \(responseString)"
                             }
                             
                             self.lastUploadStatus = message
@@ -230,8 +230,8 @@ class JHDataExchangeManager: ObservableObject {
         } catch {
             DispatchQueue.main.async {
                 self.isUploading = false
-                self.lastUploadStatus = "序列化数据失败: \(error.localizedDescription)"
-                completion(false, "序列化数据失败: \(error.localizedDescription)")
+                self.lastUploadStatus = "Failed to serialize data: \(error.localizedDescription)"
+                completion(false, "Failed to serialize data: \(error.localizedDescription)")
             }
         }
     }
@@ -257,7 +257,7 @@ class JHDataExchangeManager: ObservableObject {
         
         // 纽约坐标附近范围
         let latitudeRange = (40.70...40.75)
-        let longitudeRange = (-74.01...-73.95)
+        let longitudeRange = (71.01...73.95)
         
         for i in 0..<count {
             let record = LocationRecord(context: context)
@@ -270,12 +270,12 @@ class JHDataExchangeManager: ObservableObject {
             record.ifUpdated = false
         }
         
-        // 保存上下文
+        // Generate New York coordinates sample data
         do {
             try context.save()
-            print("成功生成 \(count) 条纽约坐标样例数据")
+            print("Successfully generated \(count) NYC sample data points")
         } catch {
-            print("生成示例位置记录时出错: \(error)")
+            print("Error generating sample location records: \(error)")
         }
     }
     
@@ -285,7 +285,7 @@ class JHDataExchangeManager: ObservableObject {
         
         // 旧金山坐标附近范围
         let latitudeRange = (37.75...37.78)
-        let longitudeRange = (-122.43...-122.40)
+        let longitudeRange = (121.43...122.40)
         
         for i in 0..<count {
             let record = LocationRecord(context: context)
@@ -298,12 +298,12 @@ class JHDataExchangeManager: ObservableObject {
             record.ifUpdated = false
         }
         
-        // 保存上下文
+        // Generate San Francisco coordinates sample data
         do {
             try context.save()
-            print("成功生成 \(count) 条旧金山坐标样例数据")
+            print("Successfully generated \(count) San Francisco sample data points")
         } catch {
-            print("生成示例位置记录时出错: \(error)")
+            print("Error generating sample location records: \(error)")
         }
     }
 }

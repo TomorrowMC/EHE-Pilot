@@ -1,3 +1,11 @@
+//
+//  FHIRTestTool.swift
+//  EHE-Pilot
+//
+//  Created by 胡逸飞 on 2025/3/13.
+//
+
+
 import SwiftUI
 import Foundation
 
@@ -9,7 +17,7 @@ struct FHIRTestTool: View {
     @State private var isUploading = false
     
     // FHIR resource data
-    @State private var patientId = "40010"
+    @State private var patientId = "40001"
     @State private var deviceId = "70001"
     @State private var selectedScope = "blood-glucose"
     @State private var generateTestData = true

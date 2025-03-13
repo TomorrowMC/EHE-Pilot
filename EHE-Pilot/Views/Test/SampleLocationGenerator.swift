@@ -1,3 +1,11 @@
+//
+//  SampleLocationGenerator.swift
+//  EHE-Pilot
+//
+//  Created by 胡逸飞 on 2025/3/13.
+//
+
+
 import Foundation
 import CoreData
 

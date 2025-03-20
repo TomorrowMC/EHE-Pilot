@@ -5,29 +5,28 @@
 //  Created by 胡逸飞 on 2025/3/13.
 //
 
-
 import Foundation
 import CoreData
 import SwiftUI
 
 class FHIRUploadService: ObservableObject {
-    // Singleton instance
+    // 单例实例
     static let shared = FHIRUploadService()
     
-    // Published properties for UI updates
+    // 发布属性用于UI更新
     @Published var isUploading = false
     @Published var lastUploadStatus: String = "Not uploaded"
     @Published var lastUploadTime: Date?
     @Published var lastUploadResult: (success: Bool, message: String)?
     
-    // Private initialization
+    // 私有初始化
     private init() {}
     
-    // MARK: - LocationRecord Upload Methods
+    // MARK: - 位置记录上传方法
     
-    /// Uploads location records using the blood-glucose type (as per requirements)
+    /// 上传位置记录使用geoposition类型
     func uploadLocationRecords(authManager: AuthManager, limit: Int = 5, completion: @escaping (Bool, String) -> Void) {
-        // Ensure authenticated
+        // 确保已认证
         guard authManager.isAuthenticated,
               let accessToken = authManager.currentAccessToken() else {
             DispatchQueue.main.async {
@@ -38,11 +37,11 @@ class FHIRUploadService: ObservableObject {
             return
         }
         
-        // Get patient ID from profile, default to 40010
+        // 从配置文件获取patientId，默认为40010
         let patientId = authManager.getPatientIdFromProfile()
-        let deviceId = "70001" // Fixed device ID
+        let deviceId = "70001" // 固定设备ID
         
-        // Get location records to upload
+        // 获取要上传的位置记录
         let records = fetchLocationRecords(limit: limit)
         
         if records.isEmpty {
@@ -54,10 +53,10 @@ class FHIRUploadService: ObservableObject {
             return
         }
         
-        // Create FHIR Bundle for blood-glucose type
-        let bundle = createBloodGlucoseFHIRBundle(from: records, patientId: patientId, deviceId: deviceId)
+        // 创建FHIR Bundle，使用Geoposition类型
+        let bundle = createGeopositionFHIRBundle(from: records, patientId: patientId, deviceId: deviceId)
         
-        // Prepare API request
+        // 准备API请求
         let baseURLString = authManager.issuerURL.absoluteString.replacingOccurrences(of: "/o", with: "")
         guard let fhirURL = URL(string: "\(baseURLString)/fhir/r5/") else {
             DispatchQueue.main.async {
@@ -68,18 +67,18 @@ class FHIRUploadService: ObservableObject {
             return
         }
         
-        // Create request
+        // 创建请求
         var request = URLRequest(url: fhirURL)
         request.httpMethod = "POST"
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         
-        // Serialize request body
+        // 序列化请求体
         do {
             let jsonData = try JSONSerialization.data(withJSONObject: bundle, options: [])
             request.httpBody = jsonData
             
-            // Print request data for debugging
+            // 打印请求数据用于调试
             if let jsonString = String(data: jsonData, encoding: .utf8) {
                 print("Uploading FHIR Bundle:")
                 print(jsonString)
@@ -90,7 +89,7 @@ class FHIRUploadService: ObservableObject {
                 self.lastUploadStatus = "Uploading..."
             }
             
-            // Send request
+            // 发送请求
             let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
                 guard let self = self else { return }
                 
@@ -109,17 +108,17 @@ class FHIRUploadService: ObservableObject {
                     if let httpResponse = response as? HTTPURLResponse {
                         let statusCode = httpResponse.statusCode
                         
-                        // Check the response body for batch response status
+                        // 检查响应体中的批处理响应状态
                         var individualSuccess = true
                         var individualMessage = ""
                         
                         if let data = data {
-                            // Try to parse the batch response to check individual entry statuses
+                            // 尝试解析批处理响应以检查单个条目状态
                             individualSuccess = self.checkBatchResponseSuccess(data, statusMessage: &individualMessage)
                         }
                         
                         if (200...299).contains(statusCode) && individualSuccess {
-                            // Successfully uploaded, mark records as uploaded
+                            // 成功上传，标记记录为已上传
                             self.markRecordsAsUploaded(records)
                             let message = "Successfully uploaded \(records.count) records"
                             self.lastUploadStatus = message
@@ -133,7 +132,7 @@ class FHIRUploadService: ObservableObject {
                             
                             if let data = data, let responseString = String(data: data, encoding: .utf8) {
                                 print("Server response: \(responseString)")
-                                // Don't include the full response in the UI message
+                                // 不在UI消息中包含完整响应
                             }
                             
                             self.lastUploadStatus = message
@@ -157,14 +156,14 @@ class FHIRUploadService: ObservableObject {
         }
     }
     
-    // MARK: - Data Preparation
+    // MARK: - 数据准备
     
-    /// Fetch location records that haven't been uploaded yet
+    /// 获取尚未上传的位置记录
     private func fetchLocationRecords(limit: Int = 10) -> [LocationRecord] {
         let context = PersistenceController.shared.container.viewContext
         let request: NSFetchRequest<LocationRecord> = LocationRecord.fetchRequest()
         
-        // Only get records that haven't been uploaded
+        // 仅获取尚未上传的记录
         request.predicate = NSPredicate(format: "ifUpdated == %@", NSNumber(value: false))
         request.sortDescriptors = [NSSortDescriptor(keyPath: \LocationRecord.timestamp, ascending: false)]
         request.fetchLimit = limit
@@ -177,38 +176,55 @@ class FHIRUploadService: ObservableObject {
         }
     }
     
-    // 修复的 createBloodGlucoseFHIRBundle 方法
-
-    private func createBloodGlucoseFHIRBundle(from records: [LocationRecord], patientId: String, deviceId: String) -> [String: Any] {
+    /// 创建一个使用geoposition类型的FHIR Bundle，保留复杂数据结构
+    private func createGeopositionFHIRBundle(from records: [LocationRecord], patientId: String, deviceId: String) -> [String: Any] {
         var entries: [[String: Any]] = []
         
         for record in records {
-            // Create location data disguised as blood glucose data
-            let locationData = createLocationDataAsBloodGlucose(from: record)
+            // 创建位置数据 - 保留复杂数据结构
+            let locationData = createGeopositionData(from: record)
             
-            // Base64 encode the data - 修复的部分
+            // Base64编码数据
             if let jsonData = try? JSONSerialization.data(withJSONObject: locationData) {
                 let base64String = jsonData.base64EncodedString()
                 
-                // Create Entry object
+                // 格式化日期时间字符串用于effectiveDateTime
+                let iso8601Formatter = ISO8601DateFormatter()
+                iso8601Formatter.formatOptions = [.withInternetDateTime]
+                let effectiveDateTime = iso8601Formatter.string(from: record.timestamp ?? Date())
+                
+                // 创建Entry对象
                 let entry: [String: Any] = [
                     "resource": [
                         "resourceType": "Observation",
                         "status": "final",
+                        "category": [
+                            [
+                                "coding": [
+                                    [
+                                        "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                                        "code": "survey",
+                                        "display": "Survey"
+                                    ]
+                                ]
+                            ]
+                        ],
+                        "code": [
+                            "coding": [
+                                [
+                                    "system": "https://w3id.org/openmhealth",
+                                    "code": "omh:geoposition:1.0",
+                                    "display": "Geoposition"
+                                ]
+                            ]
+                        ],
                         "subject": [
                             "reference": "Patient/\(patientId)"
                         ],
                         "device": [
                             "reference": "Device/\(deviceId)"
                         ],
-                        "code": [
-                            "coding": [
-                                [
-                                    "system": "https://w3id.org/openmhealth",
-                                    "code": "omh:blood-glucose:4.0"
-                                ]
-                            ]
-                        ],
+                        "effectiveDateTime": effectiveDateTime,
                         "valueAttachment": [
                             "contentType": "application/json",
                             "data": base64String
@@ -230,49 +246,46 @@ class FHIRUploadService: ObservableObject {
             }
         }
         
-        // Create Bundle
+        // 创建Bundle
         return [
             "resourceType": "Bundle",
             "type": "batch",
             "entry": entries
         ]
     }
-    /// Create location data in a format accepted by the server
-    private func createLocationDataAsBloodGlucose(from record: LocationRecord) -> [String: Any] {
+    
+    /// 创建位置数据 - 保留复杂数据结构
+    private func createGeopositionData(from record: LocationRecord) -> [String: Any] {
         var data: [String: Any] = [:]
         
-        // Location information in full format
+        // 经度信息
         data["latitude"] = [
             "value": record.latitude,
             "unit": "deg"
         ]
         
+        // 纬度信息
         data["longitude"] = [
             "value": record.longitude,
             "unit": "deg"
         ]
         
-        // Add a fake blood glucose value to match the type
-        // This is necessary since we're using blood-glucose type but storing location data
-        data["blood_glucose"] = [
-            "value": Int.random(in: 80...150),  // Random value in normal range
-            "unit": "mg/dL"
-        ]
-        
-        // Add positioning system
+        // 定位系统
         data["positioning_system"] = "GPS"
         
-        // Add satellite signal strength if available
+        // 信号强度（如果有）
         if let accuracy = record.gpsAccuracy?.doubleValue {
+            // 将GPS精度转换为卫星信号强度估计值（简化处理）
+            let signalStrength = max(5, 30 - Int(accuracy * 2)) // 简单计算，精度越高，信号越强
             data["satellite_signal_strengths"] = [
                 [
-                    "value": Int(accuracy),
+                    "value": signalStrength,
                     "unit": "dB"
                 ]
             ]
         }
         
-        // Add timestamp
+        // 时间信息
         if let timestamp = record.timestamp {
             let iso8601Formatter = ISO8601DateFormatter()
             iso8601Formatter.formatOptions = [.withInternetDateTime]
@@ -286,9 +299,9 @@ class FHIRUploadService: ObservableObject {
         return data
     }
     
-    // MARK: - Helper Methods
+    // MARK: - 辅助方法
     
-    /// Mark records as uploaded
+    /// 标记记录为已上传
     private func markRecordsAsUploaded(_ records: [LocationRecord]) {
         let context = PersistenceController.shared.container.viewContext
         
@@ -304,7 +317,7 @@ class FHIRUploadService: ObservableObject {
         }
     }
     
-    /// Check batch response for individual entry success
+    /// 检查批处理响应中的单个条目是否成功
     private func checkBatchResponseSuccess(_ responseData: Data, statusMessage: inout String) -> Bool {
         do {
             if let json = try JSONSerialization.jsonObject(with: responseData) as? [String: Any],
@@ -317,7 +330,7 @@ class FHIRUploadService: ObservableObject {
                        let status = response["status"] as? String {
                         
                         if !status.hasPrefix("2") {
-                            // Not a success status
+                            // 不是成功状态
                             if let outcome = response["outcome"] as? [String: Any],
                                let issue = (outcome["issue"] as? [[String: Any]])?.first,
                                let details = issue["details"] as? [String: Any],

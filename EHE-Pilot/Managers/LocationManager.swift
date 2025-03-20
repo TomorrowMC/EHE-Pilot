@@ -235,14 +235,14 @@ class LocationManager: NSObject, ObservableObject {
     //
 
     func attemptUploadRecords() {
-        // First, check if we're authenticated with AuthManager
+        // 首先，检查是否通过AuthManager进行了身份验证
         if let authManager = getAuthManager(), authManager.isAuthenticated {
-            // Use the FHIRUploadService to upload as blood-glucose type (which we know works)
+            // 使用FHIRUploadService上传为geoposition类型
             FHIRUploadService.shared.uploadLocationRecords(authManager: authManager) { success, message in
                 print("Location upload result: \(success ? "Success" : "Failed") - \(message)")
             }
         } else {
-            // Fall back to the original method if not authenticated
+            // 如果未经身份验证，则回退到原始方法
             attemptUploadRecordsLegacy()
         }
     }
@@ -263,7 +263,7 @@ class LocationManager: NSObject, ObservableObject {
             var bundleEntries: [[String: Any]] = []
             
             for record in notUpdatedRecords {
-                // 构建位置数据
+                // 构建位置数据 - 保留复杂数据结构
                 var locationData: [String: Any] = [
                     "latitude": [
                         "value": record.latitude,
@@ -286,22 +286,36 @@ class LocationManager: NSObject, ObservableObject {
                     ]
                 }
                 
-                // 修改这部分代码
+                // 编码数据
                 do {
                     let jsonData = try JSONSerialization.data(withJSONObject: locationData)
-                    // 直接使用base64EncodedString()，不要再转换为Data
                     let base64String = jsonData.base64EncodedString()
                     
-                    // 构建FHIR Observation资源
+                    // 格式化日期时间
+                    let effectiveDateTime = ISO8601DateFormatter().string(from: record.timestamp ?? Date())
+                    
+                    // 构建FHIR Observation资源 - 使用geoposition类型
                     let observationEntry: [String: Any] = [
                         "resource": [
                             "resourceType": "Observation",
                             "status": "final",
+                            "category": [
+                                [
+                                    "coding": [
+                                        [
+                                            "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                                            "code": "survey",
+                                            "display": "Survey"
+                                        ]
+                                    ]
+                                ]
+                            ],
                             "code": [
                                 "coding": [
                                     [
                                         "system": "https://w3id.org/openmhealth",
-                                        "code": "omh:geoposition:1.0"
+                                        "code": "omh:geoposition:1.0",
+                                        "display": "Geoposition"
                                     ]
                                 ]
                             ],
@@ -311,9 +325,10 @@ class LocationManager: NSObject, ObservableObject {
                             "device": [
                                 "reference": "Device/70001"
                             ],
+                            "effectiveDateTime": effectiveDateTime,
                             "valueAttachment": [
                                 "contentType": "application/json",
-                                "data": base64String  // 直接使用base64字符串
+                                "data": base64String
                             ]
                         ],
                         "request": [
@@ -383,7 +398,7 @@ class LocationManager: NSObject, ObservableObject {
             print("Fetch error: \(error)")
         }
     }
-
+    
     // Helper method to get AuthManager instance
     private func getAuthManager() -> AuthManager? {
         // Find AuthManager in SwiftUI environment

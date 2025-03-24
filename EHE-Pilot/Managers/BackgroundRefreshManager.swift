@@ -48,7 +48,7 @@ class BackgroundRefreshManager {
         }
     }
     
-    // 处理认证刷新任务
+    // 修改handleAuthRefreshTask方法
     private func handleAuthRefreshTask(task: BGAppRefreshTask) {
         // 设置过期处理器
         task.expirationHandler = {
@@ -59,24 +59,29 @@ class BackgroundRefreshManager {
         // 先安排下一次任务，确保任务链不会中断
         scheduleAuthRefreshTask()
         
-        // 获取AuthManager并尝试刷新令牌
+        // 获取AuthManager
         let authManager = AppDelegate.shared.authManager
         
-        // 只有在已认证状态才尝试刷新令牌
-        if authManager.isAuthenticated {
-            authManager.refreshTokenIfNeeded { token in
-                if token != nil {
-                    print("Successfully refreshed token in background")
-                    // 令牌刷新成功，尝试上传位置数据
-                    self.tryUploadLocationData(authManager: authManager)
-                } else {
-                    print("Failed to refresh token in background")
+        // 验证Token有效性
+        authManager.verifyTokenValidity { isValid in
+            if !isValid {
+                // Token无效，尝试刷新
+                authManager.refreshTokenWithStoredRefreshToken { success in
+                    if success {
+                        print("Successfully refreshed token in background")
+                        // 令牌刷新成功，尝试上传位置数据
+                        self.tryUploadLocationData(authManager: authManager)
+                    } else {
+                        print("Failed to refresh token in background")
+                    }
+                    task.setTaskCompleted(success: success)
                 }
-                task.setTaskCompleted(success: token != nil)
+            } else {
+                print("Token still valid, no refresh needed")
+                // Token有效，直接尝试上传数据
+                self.tryUploadLocationData(authManager: authManager)
+                task.setTaskCompleted(success: true)
             }
-        } else {
-            print("User not authenticated, skipping token refresh")
-            task.setTaskCompleted(success: true)
         }
     }
     
@@ -160,4 +165,6 @@ class BackgroundRefreshManager {
         scheduleAuthRefreshTask()
         scheduleLocationUpdateTask()
     }
+    
+    
 }

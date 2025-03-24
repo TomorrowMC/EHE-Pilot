@@ -22,6 +22,11 @@ class AuthManager: ObservableObject {
     @Published var profileData: [String: Any]?
     @Published var statusMessage: String = "Not authenticated"
     
+    // 在AuthManager类内部添加这些KeyChain相关的键名
+    private let accessTokenKey = "com.EHE-Pilot.accessToken"
+    private let refreshTokenKey = "com.EHE-Pilot.refreshToken"
+    private let tokenExpiryKey = "com.EHE-Pilot.tokenExpiry"
+    
     // MARK: - Initialization
     
     init() {
@@ -32,7 +37,240 @@ class AuthManager: ObservableObject {
         // Try to restore from keychain if available
         loadAuthStateFromKeychain()
     }
-    
+    // 在init()方法之后添加KeyChain存储方法
+    private func saveTokenToKeychain(token: String, forKey key: String) {
+        // 创建查询字典
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+            kSecValueData as String: token.data(using: .utf8)!
+        ]
+        
+        // 先删除可能存在的旧值
+        SecItemDelete(query as CFDictionary)
+        
+        // 然后添加新值
+        let status = SecItemAdd(query as CFDictionary, nil)
+        if status != errSecSuccess {
+            print("Failed to save token to keychain: \(status)")
+        }
+    }
+
+    private func loadTokenFromKeychain(forKey key: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key,
+            kSecReturnData as String: kCFBooleanTrue!,
+            kSecMatchLimit as String: kSecMatchLimitOne
+        ]
+        
+        var dataTypeRef: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
+        
+        if status == errSecSuccess, let data = dataTypeRef as? Data, let token = String(data: data, encoding: .utf8) {
+            return token
+        }
+        
+        return nil
+    }
+
+    private func deleteTokenFromKeychain(forKey key: String) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrAccount as String: key
+        ]
+        
+        let status = SecItemDelete(query as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            print("Failed to delete token from keychain: \(status)")
+        }
+    }
+
+    // 保存Token过期时间到UserDefaults (不太敏感的信息可以放UserDefaults)
+    private func saveTokenExpiry(date: Date?) {
+        if let date = date {
+            UserDefaults.standard.set(date.timeIntervalSince1970, forKey: tokenExpiryKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: tokenExpiryKey)
+        }
+    }
+
+    private func getTokenExpiry() -> Date? {
+        if let timestamp = UserDefaults.standard.object(forKey: tokenExpiryKey) as? TimeInterval {
+            return Date(timeIntervalSince1970: timestamp)
+        }
+        return nil
+    }
+
+    // 添加保存和加载完整Token信息的方法
+    func saveTokens(accessToken: String, refreshToken: String, expiresIn: TimeInterval = 1209600) { // 默认2周过期
+        // 保存token到KeyChain
+        saveTokenToKeychain(token: accessToken, forKey: accessTokenKey)
+        saveTokenToKeychain(token: refreshToken, forKey: refreshTokenKey)
+        
+        // 计算并保存过期时间
+        let expiryDate = Date().addingTimeInterval(expiresIn)
+        saveTokenExpiry(date: expiryDate)
+        
+        // 更新状态
+        self.tokenResponse = [
+            "access_token": accessToken,
+            "refresh_token": refreshToken
+        ]
+        self.isAuthenticated = true
+    }
+
+    // 从KeyChain加载Token
+    func loadTokensFromStorage() -> Bool {
+        guard let accessToken = loadTokenFromKeychain(forKey: accessTokenKey),
+              let refreshToken = loadTokenFromKeychain(forKey: refreshTokenKey) else {
+            return false
+        }
+        
+        // 恢复token状态
+        self.tokenResponse = [
+            "access_token": accessToken,
+            "refresh_token": refreshToken
+        ]
+        
+        // 检查是否过期
+        if let expiryDate = getTokenExpiry(), expiryDate > Date() {
+            self.isAuthenticated = true
+            return true
+        } else {
+            // Token可能已过期，需要刷新
+            return false
+        }
+    }
+
+    // 清除所有Token
+    func clearStoredTokens() {
+        deleteTokenFromKeychain(forKey: accessTokenKey)
+        deleteTokenFromKeychain(forKey: refreshTokenKey)
+        saveTokenExpiry(date: nil)
+        self.tokenResponse = nil
+        self.isAuthenticated = false
+    }
+
+    // 修改signOut方法以清除存储的Token
+    func signOut() {
+        authState = nil
+        tokenResponse = nil
+        profileData = nil
+        isAuthenticated = false
+        statusMessage = "Signed out"
+        
+        // 清除KeyChain中的auth状态和Token
+        deleteAuthStateFromKeychain()
+        clearStoredTokens()
+    }
+
+    // 添加自动登录方法
+    func attemptAutoLogin(completion: @escaping (Bool) -> Void) {
+        // 先尝试从KeyChain加载Token
+        if loadTokensFromStorage() {
+            // 成功加载Token，验证有效性
+            verifyTokenValidity { [weak self] isValid in
+                guard let self = self else { return }
+                
+                if isValid {
+                    // Token有效，获取用户资料
+                    self.fetchUserProfile { success in
+                        self.isAuthenticated = success
+                        completion(success)
+                    }
+                } else {
+                    // Token无效，尝试刷新
+                    self.refreshTokenWithStoredRefreshToken { refreshSuccess in
+                        if refreshSuccess {
+                            // 刷新成功，获取用户资料
+                            self.fetchUserProfile { success in
+                                self.isAuthenticated = success
+                                completion(success)
+                            }
+                        } else {
+                            // 刷新失败，需要重新登录
+                            self.isAuthenticated = false
+                            completion(false)
+                        }
+                    }
+                }
+            }
+        } else {
+            // KeyChain中没有Token
+            completion(false)
+        }
+    }
+
+    // 使用存储的refreshToken刷新accessToken
+    func refreshTokenWithStoredRefreshToken(completion: @escaping (Bool) -> Void) {
+        guard let refreshToken = loadTokenFromKeychain(forKey: refreshTokenKey),
+              let tokenEndpoint = discoveryConfig?["token_endpoint"] as? String,
+              let tokenURL = URL(string: tokenEndpoint) else {
+            completion(false)
+            return
+        }
+        
+        let parameters = [
+            "grant_type": "refresh_token",
+            "refresh_token": refreshToken,
+            "client_id": clientID
+        ]
+        
+        var request = URLRequest(url: URL(string: tokenEndpoint)!)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        
+        // 转换参数为表单编码字符串
+        let formString = parameters.map { "\($0.key)=\($0.value)" }.joined(separator: "&")
+        request.httpBody = formString.data(using: .utf8)
+        
+        // 发送请求
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("Token refresh error: \(error.localizedDescription)")
+                    self.statusMessage = "Token refresh failed"
+                    completion(false)
+                    return
+                }
+                
+                guard let data = data,
+                      let httpResponse = response as? HTTPURLResponse,
+                      httpResponse.statusCode == 200 else {
+                    print("Invalid token refresh response")
+                    self.statusMessage = "Invalid token refresh response"
+                    completion(false)
+                    return
+                }
+                
+                do {
+                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                       let accessToken = json["access_token"] as? String {
+                        // 保存新的token
+                        let refreshToken = json["refresh_token"] as? String ?? refreshToken
+                        let expiresIn = json["expires_in"] as? TimeInterval ?? 1209600 // 默认2周
+                        
+                        self.saveTokens(accessToken: accessToken, refreshToken: refreshToken, expiresIn: expiresIn)
+                        self.statusMessage = "Token refreshed successfully"
+                        completion(true)
+                    } else {
+                        print("Could not parse token refresh response")
+                        self.statusMessage = "Could not parse token refresh response"
+                        completion(false)
+                    }
+                } catch {
+                    print("Error parsing token refresh response: \(error.localizedDescription)")
+                    self.statusMessage = "Error parsing token refresh response"
+                    completion(false)
+                }
+            }
+        }
+        
+        task.resume()
+    }
     // MARK: - Property accessors
     
     var redirectURI: URL {
@@ -335,19 +573,6 @@ class AuthManager: ObservableObject {
         }
         
         return false
-    }
-    
-    // MARK: - Session Management
-    
-    func signOut() {
-        authState = nil
-        tokenResponse = nil
-        profileData = nil
-        isAuthenticated = false
-        statusMessage = "Signed out"
-        
-        // Clear keychain
-        deleteAuthStateFromKeychain()
     }
     
     // MARK: - Keychain Storage

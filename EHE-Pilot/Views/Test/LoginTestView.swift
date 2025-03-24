@@ -347,7 +347,19 @@ struct LoginTestView: View {
     
     // 上传位置数据到原系统
     private func uploadLocationData() {
-        locationUploadManager.uploadLocationData(authManager: authManager) { success, message in
+//        locationUploadManager.uploadLocationData(authManager: authManager) { success, message in
+//            uploadAlertMessage = message
+//            showingUploadAlert = true
+//            
+//            // 触发触觉反馈
+//            let generator = UINotificationFeedbackGenerator()
+//            if success {
+//                generator.notificationOccurred(.success)
+//            } else {
+//                generator.notificationOccurred(.error)
+//            }
+//        }
+        FHIRUploadService.shared.uploadLocationRecords(authManager: authManager) { success, message in
             uploadAlertMessage = message
             showingUploadAlert = true
             
@@ -358,12 +370,25 @@ struct LoginTestView: View {
             } else {
                 generator.notificationOccurred(.error)
             }
+            print("Background location upload attempt: \(success ? "Success" : "Failed") - \(message)")
         }
     }
     
     // 上传位置数据到JH Data Exchange
     private func uploadToJHDataExchange() {
-        jhDataManager.uploadLocationData(authManager: authManager) { success, message in
+//        jhDataManager.uploadLocationData(authManager: authManager) { success, message in
+//            uploadAlertMessage = message
+//            showingUploadAlert = true
+//            
+//            // 触发触觉反馈
+//            let generator = UINotificationFeedbackGenerator()
+//            if success {
+//                generator.notificationOccurred(.success)
+//            } else {
+//                generator.notificationOccurred(.error)
+//            }
+//        }
+        FHIRUploadService.shared.uploadLocationRecords(authManager: authManager) { success, message in
             uploadAlertMessage = message
             showingUploadAlert = true
             
@@ -374,6 +399,7 @@ struct LoginTestView: View {
             } else {
                 generator.notificationOccurred(.error)
             }
+            print("Background location upload attempt: \(success ? "Success" : "Failed") - \(message)")
         }
     }
     

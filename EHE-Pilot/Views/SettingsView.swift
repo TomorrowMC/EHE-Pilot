@@ -138,6 +138,9 @@ struct SettingsView: View {
                     NavigationLink(destination: LoginTestView()) {
                         Text("Test OAuth Flow")
                     }
+                    NavigationLink(destination: TokenTestView()){
+                        Text("Test Token")
+                    }
                 }
             }
             .navigationTitle("Settings")

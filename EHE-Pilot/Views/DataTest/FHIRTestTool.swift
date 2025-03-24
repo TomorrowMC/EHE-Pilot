@@ -5,7 +5,6 @@
 //  Created by 胡逸飞 on 2025/3/13.
 //
 
-
 import SwiftUI
 import Foundation
 
@@ -19,15 +18,15 @@ struct FHIRTestTool: View {
     // FHIR resource data
     @State private var patientId = "40001"
     @State private var deviceId = "70001"
-    @State private var selectedScope = "blood-glucose"
+    @State private var selectedScope = "geoposition"
     @State private var generateTestData = true
     @State private var useFullFormat = true
     
     // Predefined scopes
     private let availableScopes = [
+        "geoposition",
         "blood-glucose",
         "blood-pressure",
-        "geoposition",
         "step-count",
         "heart-rate",
         "sleep-duration"
@@ -109,6 +108,10 @@ struct FHIRTestTool: View {
                                 }
                             }
                             .padding(.vertical, 4)
+                            .contentShape(Rectangle()) // 确保整个区域可点击
+                            .onTapGesture {
+                                copyLogToClipboard(log)
+                            }
                         }
                         
                         Button("Clear Logs") {
@@ -141,79 +144,142 @@ struct FHIRTestTool: View {
         isUploading = true
         
         // 1. Create test data
-        let locationData = generateTestData ? createTestData() : [String: Any]()
+        let testData = generateTestData ? createTestData() : [String: Any]()
         
         // 2. Prepare the FHIR Bundle
-        let bundle = createFHIRBundle(with: locationData)
+        let bundle = createFHIRBundle(with: testData)
         
         // 3. Upload to FHIR endpoint
         uploadFHIRBundle(bundle, with: accessToken)
     }
     
     private func createTestData() -> [String: Any] {
-        // Generate random coordinates
-        let latitude = Double.random(in: 37.75...40.75)
-        let longitude = Double.random(in: -122.45...(-73.95))
+        var data: [String: Any] = [:]
         
-        var data: [String: Any]
-        
-        if useFullFormat {
-            // Full format (with units and structure)
-            data = [
-                "latitude": [
-                    "value": latitude,
-                    "unit": "deg"
-                ],
-                "longitude": [
-                    "value": longitude,
-                    "unit": "deg"
-                ],
-                "positioningSystem": "GPS",
-                "satellite_signal_strengths": [
-                    [
-                        "value": Int.random(in: 5...25),
-                        "unit": "dB"
+        if selectedScope == "geoposition" {
+            // Generate random coordinates for geoposition
+            let latitude = Double.random(in: 37.75...40.75)
+            let longitude = Double.random(in: -122.45...(-73.95))
+            
+            if useFullFormat {
+                // Full geoposition format (matching FHIRUploadService format)
+                data = [
+                    "latitude": [
+                        "value": latitude,
+                        "unit": "deg"
+                    ],
+                    "longitude": [
+                        "value": longitude,
+                        "unit": "deg"
+                    ],
+                    "positioning_system": "GPS",
+                    "satellite_signal_strengths": [
+                        [
+                            "value": Int.random(in: 5...25),
+                            "unit": "dB"
+                        ]
+                    ],
+                    "effective_time_frame": [
+                        "date_time": ISO8601DateFormatter().string(from: Date())
                     ]
-                ],
-                "effective_time_frame": [
-                    "date_time": ISO8601DateFormatter().string(from: Date())
-                ]
-            ]
-        } else {
-            // Simple format
-            data = [
-                "latitude": latitude,
-                "longitude": longitude,
-                "timestamp": ISO8601DateFormatter().string(from: Date())
-            ]
-        }
-        
-        // For blood glucose, add glucose value
-        if selectedScope == "blood-glucose" {
-            if useFullFormat {
-                data["blood_glucose"] = [
-                    "value": Int.random(in: 70...180),
-                    "unit": "mg/dL"
                 ]
             } else {
-                data["glucose"] = Int.random(in: 70...180)
+                // Simple format
+                data = [
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "timestamp": ISO8601DateFormatter().string(from: Date())
+                ]
             }
-        }
-        
-        // For blood pressure, add systolic/diastolic values
-        if selectedScope == "blood-pressure" {
+        } else if selectedScope == "blood-glucose" {
             if useFullFormat {
-                data["systolic_blood_pressure"] = [
-                    "value": Int.random(in: 110...140),
-                    "unit": "mmHg"
-                ]
-                data["diastolic_blood_pressure"] = [
-                    "value": Int.random(in: 70...90),
-                    "unit": "mmHg"
+                data = [
+                    "blood_glucose": [
+                        "value": Int.random(in: 70...180),
+                        "unit": "mg/dL"
+                    ],
+                    "effective_time_frame": [
+                        "date_time": ISO8601DateFormatter().string(from: Date())
+                    ]
                 ]
             } else {
-                data["systolic"] = Int.random(in: 110...140)
-                data["diastolic"] = Int.random(in: 70...90)
+                data = [
+                    "glucose": Int.random(in: 70...180),
+                    "timestamp": ISO8601DateFormatter().string(from: Date())
+                ]
+            }
+        } else if selectedScope == "blood-pressure" {
+            if useFullFormat {
+                data = [
+                    "systolic_blood_pressure": [
+                        "value": Int.random(in: 110...140),
+                        "unit": "mmHg"
+                    ],
+                    "diastolic_blood_pressure": [
+                        "value": Int.random(in: 70...90),
+                        "unit": "mmHg"
+                    ],
+                    "effective_time_frame": [
+                        "date_time": ISO8601DateFormatter().string(from: Date())
+                    ]
+                ]
+            } else {
+                data = [
+                    "systolic": Int.random(in: 110...140),
+                    "diastolic": Int.random(in: 70...90),
+                    "timestamp": ISO8601DateFormatter().string(from: Date())
+                ]
+            }
+        } else if selectedScope == "heart-rate" {
+            if useFullFormat {
+                data = [
+                    "heart_rate": [
+                        "value": Int.random(in: 60...100),
+                        "unit": "bpm"
+                    ],
+                    "effective_time_frame": [
+                        "date_time": ISO8601DateFormatter().string(from: Date())
+                    ]
+                ]
+            } else {
+                data = [
+                    "rate": Int.random(in: 60...100),
+                    "timestamp": ISO8601DateFormatter().string(from: Date())
+                ]
+            }
+        } else if selectedScope == "step-count" {
+            if useFullFormat {
+                data = [
+                    "step_count": [
+                        "value": Int.random(in: 1000...10000)
+                    ],
+                    "effective_time_frame": [
+                        "date_time": ISO8601DateFormatter().string(from: Date())
+                    ]
+                ]
+            } else {
+                data = [
+                    "steps": Int.random(in: 1000...10000),
+                    "timestamp": ISO8601DateFormatter().string(from: Date())
+                ]
+            }
+        } else if selectedScope == "sleep-duration" {
+            let hours = Double.random(in: 5...9)
+            if useFullFormat {
+                data = [
+                    "sleep_duration": [
+                        "value": hours,
+                        "unit": "h"
+                    ],
+                    "effective_time_frame": [
+                        "date_time": ISO8601DateFormatter().string(from: Date())
+                    ]
+                ]
+            } else {
+                data = [
+                    "duration": hours,
+                    "timestamp": ISO8601DateFormatter().string(from: Date())
+                ]
             }
         }
         
@@ -233,46 +299,78 @@ struct FHIRTestTool: View {
         // Base64 encode the data
         let base64String = jsonData.base64EncodedString()
         
-        // Map scope to OMH code
-        let scope = "omh:\(selectedScope):4.0"
-        
-        // Create a UUID for the observation
+        // Generate UUID for observation
         let uuid = UUID().uuidString
         
-        // Create the FHIR bundle
+        // Map scope to OMH code
+        var scope = ""
+        var version = "1.0"
+        
+        // Use correct code formats based on scope
+        if selectedScope == "geoposition" {
+            scope = "omh:geoposition:1.0"
+        } else {
+            version = "4.0"
+            scope = "omh:\(selectedScope):\(version)"
+        }
+        
+        // Format date time string for effectiveDateTime
+        let iso8601Formatter = ISO8601DateFormatter()
+        iso8601Formatter.formatOptions = [.withInternetDateTime]
+        let effectiveDateTime = iso8601Formatter.string(from: Date())
+        
+        // Create the FHIR bundle with category for specific types
+        var observationResource: [String: Any] = [
+            "resourceType": "Observation",
+            "status": "final",
+            "subject": [
+                "reference": "Patient/\(patientId)"
+            ],
+            "device": [
+                "reference": "Device/\(deviceId)"
+            ],
+            "code": [
+                "coding": [
+                    [
+                        "system": "https://w3id.org/openmhealth",
+                        "code": scope
+                    ]
+                ]
+            ],
+            "valueAttachment": [
+                "contentType": "application/json",
+                "data": base64String
+            ],
+            "identifier": [
+                [
+                    "value": uuid,
+                    "system": "https://ehr.example.com"
+                ]
+            ],
+            "effectiveDateTime": effectiveDateTime
+        ]
+        
+        // Add category for certain types like geoposition
+        if selectedScope == "geoposition" {
+            observationResource["category"] = [
+                [
+                    "coding": [
+                        [
+                            "system": "http://terminology.hl7.org/CodeSystem/observation-category",
+                            "code": "survey",
+                            "display": "Survey"
+                        ]
+                    ]
+                ]
+            ]
+        }
+        
         let bundle: [String: Any] = [
             "resourceType": "Bundle",
             "type": "batch",
             "entry": [
                 [
-                    "resource": [
-                        "resourceType": "Observation",
-                        "status": "final",
-                        "subject": [
-                            "reference": "Patient/\(patientId)"
-                        ],
-                        "device": [
-                            "reference": "Device/\(deviceId)"
-                        ],
-                        "code": [
-                            "coding": [
-                                [
-                                    "system": "https://w3id.org/openmhealth",
-                                    "code": scope
-                                ]
-                            ]
-                        ],
-                        "valueAttachment": [
-                            "contentType": "application/json",
-                            "data": base64String
-                        ],
-                        "identifier": [
-                            [
-                                "value": uuid,
-                                "system": "https://ehr.example.com"
-                            ]
-                        ]
-                    ],
+                    "resource": observationResource,
                     "request": [
                         "method": "POST",
                         "url": "Observation"
@@ -424,6 +522,24 @@ struct FHIRTestTool: View {
         if debugLogs.count > 30 {
             debugLogs.removeLast()
         }
+    }
+    
+    private func copyLogToClipboard(_ log: DebugLogEntry) {
+        // 创建要复制的日志文本
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateStyle = .short
+        dateFormatter.timeStyle = .medium
+        
+        var logText = "[\(dateFormatter.string(from: log.timestamp))] [\(log.type)] \(log.message)"
+        if !log.details.isEmpty {
+            logText += "\n\nDetails:\n\(log.details)"
+        }
+        
+        // 复制到剪贴板
+        UIPasteboard.general.string = logText
+        
+        // 添加一个反馈日志，显示复制成功
+        addLog(message: "Log Copied", type: .info)
     }
     
     private func colorForLogType(_ type: LogType) -> Color {

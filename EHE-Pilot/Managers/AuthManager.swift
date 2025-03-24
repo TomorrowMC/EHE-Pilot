@@ -27,6 +27,7 @@ class AuthManager: ObservableObject {
     private let refreshTokenKey = "com.EHE-Pilot.refreshToken"
     private let tokenExpiryKey = "com.EHE-Pilot.tokenExpiry"
     
+    
     // MARK: - Initialization
     
     init() {
@@ -95,7 +96,7 @@ class AuthManager: ObservableObject {
         }
     }
 
-    private func getTokenExpiry() -> Date? {
+    func getTokenExpiry() -> Date? {
         if let timestamp = UserDefaults.standard.object(forKey: tokenExpiryKey) as? TimeInterval {
             return Date(timeIntervalSince1970: timestamp)
         }
@@ -108,8 +109,17 @@ class AuthManager: ObservableObject {
         saveTokenToKeychain(token: accessToken, forKey: accessTokenKey)
         saveTokenToKeychain(token: refreshToken, forKey: refreshTokenKey)
         
-        // 计算并保存过期时间
-        let expiryDate = Date().addingTimeInterval(expiresIn)
+        // 强制使用两周过期时间
+        let forcedExpiresIn: TimeInterval = 1209600 // 两周 = 14天 * 24小时 * 60分钟 * 60秒
+        
+        // 打印调试信息
+        print("设置Token过期时间，当前时间: \(Date())")
+        print("服务器提供的过期参数: \(expiresIn) 秒")
+        print("强制使用过期时间: \(forcedExpiresIn) 秒")
+        
+        let expiryDate = Date().addingTimeInterval(forcedExpiresIn)
+        print("计算的过期时间: \(expiryDate) (两周后)")
+        
         saveTokenExpiry(date: expiryDate)
         
         // 更新状态
@@ -119,11 +129,27 @@ class AuthManager: ObservableObject {
         ]
         self.isAuthenticated = true
     }
-
+    
     // 从KeyChain加载Token
     func loadTokensFromStorage() -> Bool {
+        print("尝试从KeyChain加载Token...")
+        
+        // 打印是否存在Token
+        if let accessToken = loadTokenFromKeychain(forKey: accessTokenKey) {
+            print("发现访问Token: \(accessToken.prefix(10))...")
+        } else {
+            print("KeyChain中没有访问Token")
+        }
+        
+        if let refreshToken = loadTokenFromKeychain(forKey: refreshTokenKey) {
+            print("发现刷新Token: \(refreshToken.prefix(10))...")
+        } else {
+            print("KeyChain中没有刷新Token")
+        }
+        
         guard let accessToken = loadTokenFromKeychain(forKey: accessTokenKey),
               let refreshToken = loadTokenFromKeychain(forKey: refreshTokenKey) else {
+            print("无法从KeyChain加载完整Token")
             return false
         }
         
@@ -134,12 +160,22 @@ class AuthManager: ObservableObject {
         ]
         
         // 检查是否过期
-        if let expiryDate = getTokenExpiry(), expiryDate > Date() {
+        if let expiryDate = getTokenExpiry() {
+            print("Token过期时间: \(expiryDate)")
+            if expiryDate > Date() {
+                self.isAuthenticated = true
+                print("Token未过期，设置为已认证")
+                return true
+            } else {
+                print("Token已过期，需要刷新")
+                // 即使过期也返回true，因为我们有refreshToken可以尝试刷新
+                return true
+            }
+        } else {
+            print("找不到Token过期时间")
+            // 如果没有过期时间但有Token，仍然可以尝试使用
             self.isAuthenticated = true
             return true
-        } else {
-            // Token可能已过期，需要刷新
-            return false
         }
     }
 
@@ -152,7 +188,7 @@ class AuthManager: ObservableObject {
         self.isAuthenticated = false
     }
 
-    // 修改signOut方法以清除存储的Token
+    // 修改signOut方法末尾
     func signOut() {
         authState = nil
         tokenResponse = nil
@@ -160,9 +196,20 @@ class AuthManager: ObservableObject {
         isAuthenticated = false
         statusMessage = "Signed out"
         
-        // 清除KeyChain中的auth状态和Token
+        // 清除所有存储的Token
         deleteAuthStateFromKeychain()
         clearStoredTokens()
+    }
+
+    // 增加同步OIDAuthState和自定义Token存储的方法
+    private func syncTokensFromAuthState() {
+        if let authState = self.authState,
+           let tokenResponse = authState.lastTokenResponse,
+           let accessToken = tokenResponse.accessToken,
+           let refreshToken = tokenResponse.refreshToken {
+            let expiresIn = tokenResponse.accessTokenExpirationDate?.timeIntervalSinceNow ?? 1209600
+            self.saveTokens(accessToken: accessToken, refreshToken: refreshToken, expiresIn: expiresIn)
+        }
     }
 
     // 添加自动登录方法
@@ -204,9 +251,32 @@ class AuthManager: ObservableObject {
 
     // 使用存储的refreshToken刷新accessToken
     func refreshTokenWithStoredRefreshToken(completion: @escaping (Bool) -> Void) {
-        guard let refreshToken = loadTokenFromKeychain(forKey: refreshTokenKey),
-              let tokenEndpoint = discoveryConfig?["token_endpoint"] as? String,
+        guard let refreshToken = loadTokenFromKeychain(forKey: refreshTokenKey) else {
+            print("No refresh token found in keychain")
+            completion(false)
+            return
+        }
+        
+        // 如果discoveryConfig为空，先尝试加载配置
+        if discoveryConfig == nil {
+            discoverConfiguration { [weak self] success in
+                guard let self = self, success else {
+                    DispatchQueue.main.async {
+                        print("Failed to discover configuration")
+                        completion(false)
+                    }
+                    return
+                }
+                
+                // 再次调用自身，此时已有配置
+                self.refreshTokenWithStoredRefreshToken(completion: completion)
+            }
+            return
+        }
+        
+        guard let tokenEndpoint = discoveryConfig?["token_endpoint"] as? String,
               let tokenURL = URL(string: tokenEndpoint) else {
+            print("Missing token endpoint in discovered configuration")
             completion(false)
             return
         }
@@ -251,9 +321,13 @@ class AuthManager: ObservableObject {
                        let accessToken = json["access_token"] as? String {
                         // 保存新的token
                         let refreshToken = json["refresh_token"] as? String ?? refreshToken
-                        let expiresIn = json["expires_in"] as? TimeInterval ?? 1209600 // 默认2周
+                        let serverExpiresIn = json["expires_in"] as? TimeInterval ?? 0
                         
-                        self.saveTokens(accessToken: accessToken, refreshToken: refreshToken, expiresIn: expiresIn)
+                        print("服务器返回的过期时间: \(serverExpiresIn) 秒")
+                        print("强制使用两周过期时间")
+                        
+                        // 强制使用两周过期时间
+                        self.saveTokens(accessToken: accessToken, refreshToken: refreshToken, expiresIn: 1209600)
                         self.statusMessage = "Token refreshed successfully"
                         completion(true)
                     } else {
@@ -423,7 +497,8 @@ class AuthManager: ObservableObject {
                         self.statusMessage = "Authorization failed: \(error.localizedDescription)"
                         return
                     }
-                    
+                    // 在AuthManager.swift中修改signIn方法的回调部分
+                    // 修改signIn方法中的成功回调部分
                     if let authState = authState {
                         self.authState = authState
                         self.isAuthenticated = true
@@ -432,12 +507,21 @@ class AuthManager: ObservableObject {
                         // Save auth state to keychain
                         self.saveAuthStateToKeychain()
                         
-                        // Extract token response data
+                        // Extract token response data and save tokens
                         if let tokenResponse = authState.lastTokenResponse {
                             var tokenData: [String: Any] = [:]
                             if let accessToken = tokenResponse.accessToken {
                                 tokenData["access_token"] = accessToken
+                                
+                                // 保存tokens到KeyChain
+                                if let refreshToken = tokenResponse.refreshToken {
+                                    print("将OAuth流程获取的Token保存到KeyChain")
+                                    let expiresIn = tokenResponse.accessTokenExpirationDate?.timeIntervalSinceNow ?? 1209600
+                                    self.saveTokens(accessToken: accessToken, refreshToken: refreshToken, expiresIn: expiresIn)
+                                }
                             }
+                            
+                            // 更新tokenResponse
                             if let refreshToken = tokenResponse.refreshToken {
                                 tokenData["refresh_token"] = refreshToken
                             }
@@ -616,6 +700,7 @@ class AuthManager: ObservableObject {
         
         if status == errSecSuccess, let data = dataTypeRef as? Data {
             do {
+                // 在loadAuthStateFromKeychain方法中的成功恢复authState后添加
                 if let authState = try NSKeyedUnarchiver.unarchiveTopLevelObjectWithData(data) as? OIDAuthState {
                     self.authState = authState
                     self.isAuthenticated = true
@@ -625,7 +710,16 @@ class AuthManager: ObservableObject {
                         var tokenData: [String: Any] = [:]
                         if let accessToken = tokenResponse.accessToken {
                             tokenData["access_token"] = accessToken
+                            
+                            // 同步Token到KeyChain
+                            if let refreshToken = tokenResponse.refreshToken {
+                                print("同步OIDAuthState中的Token到KeyChain")
+                                // 强制使用两周(1209600秒)而不是服务器返回的时间
+                                self.saveTokens(accessToken: accessToken, refreshToken: refreshToken, expiresIn: 1209600)
+                            }
                         }
+                        
+                        // 更新tokenResponse属性
                         if let refreshToken = tokenResponse.refreshToken {
                             tokenData["refresh_token"] = refreshToken
                         }
@@ -766,6 +860,29 @@ class AuthManager: ObservableObject {
         
         task.resume()
     }
+    
+    // 在AuthManager类中添加此方法
+    func syncCurrentTokensToKeyChain() -> Bool {
+        if let accessToken = currentAccessToken(),
+           let refreshToken = tokenResponse?["refresh_token"] as? String {
+            // 默认设置2周过期时间
+            saveTokens(accessToken: accessToken, refreshToken: refreshToken)
+            print("成功将当前Token同步到KeyChain")
+            return true
+        } else if let authState = self.authState,
+                  let tokenResponse = authState.lastTokenResponse,
+                  let accessToken = tokenResponse.accessToken,
+                  let refreshToken = tokenResponse.refreshToken {
+            let expiresIn = tokenResponse.accessTokenExpirationDate?.timeIntervalSinceNow ?? 1209600
+            saveTokens(accessToken: accessToken, refreshToken: refreshToken, expiresIn: expiresIn)
+            print("成功将AuthState中的Token同步到KeyChain")
+            return true
+        }
+        
+        print("没有找到可用的Token来同步")
+        return false
+    }
+    
     func verifyTokenValidity(completion: @escaping (Bool) -> Void) {
         guard let accessToken = currentAccessToken() else {
             isAuthenticated = false

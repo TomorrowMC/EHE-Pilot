@@ -2,6 +2,17 @@ import Foundation
 import CoreData
 import SwiftUI
 
+
+
+//仅供测试使用
+//仅供测试使用
+//仅供测试使用
+//仅供测试使用
+//仅供测试使用
+
+
+
+
 class LocationUploadManager: ObservableObject {
     // 单例实例
     static let shared = LocationUploadManager()
@@ -136,106 +147,6 @@ class LocationUploadManager: ObservableObject {
         return data
     }
     
-    // 上传数据到服务器
-    func uploadLocationData(authManager: AuthManager, completion: @escaping (Bool, String) -> Void) {
-        // 确保已经登录
-        guard authManager.isAuthenticated,
-              let accessToken = authManager.currentAccessToken() else {
-            DispatchQueue.main.async {
-                self.lastUploadStatus = "未授权，请先登录"
-                completion(false, "未授权，请先登录")
-            }
-            return
-        }
-        
-        // 获取位置记录
-        let records = fetchLocationRecords(limit: 5) // 每次上传5条记录
-        
-        if records.isEmpty {
-            DispatchQueue.main.async {
-                self.lastUploadStatus = "没有新的位置记录需要上传"
-                completion(false, "没有新的位置记录需要上传")
-            }
-            return
-        }
-        
-        // 创建FHIR Bundle
-        let bundle = createFHIRBundle(from: records)
-        
-        // 准备API请求
-        // 使用基础URL，去掉路径中的 "/o"
-        let baseURLString = authManager.issuerURL.absoluteString.replacingOccurrences(of: "/o", with: "")
-        guard let fhirURL = URL(string: "\(baseURLString)/fhir/r5/") else {
-            DispatchQueue.main.async {
-                self.lastUploadStatus = "无效的FHIR端点URL"
-                completion(false, "无效的FHIR端点URL")
-            }
-            return
-        }
-        
-        // 创建请求
-        var request = URLRequest(url: fhirURL)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        
-        // 序列化请求体
-        do {
-            let jsonData = try JSONSerialization.data(withJSONObject: bundle, options: [])
-            request.httpBody = jsonData
-            
-            print("Uploading FHIR Bundle: \(String(data: jsonData, encoding: .utf8) ?? "")")
-            
-            DispatchQueue.main.async {
-                self.isUploading = true
-            }
-            
-            // 发送请求
-            let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
-                guard let self = self else { return }
-                
-                DispatchQueue.main.async {
-                    self.isUploading = false
-                    self.lastUploadTime = Date()
-                    
-                    if let error = error {
-                        self.lastUploadStatus = "上传失败: \(error.localizedDescription)"
-                        completion(false, "上传失败: \(error.localizedDescription)")
-                        return
-                    }
-                    
-                    if let httpResponse = response as? HTTPURLResponse {
-                        let statusCode = httpResponse.statusCode
-                        
-                        if (200...299).contains(statusCode) {
-                            // 成功上传，标记记录为已上传
-                            self.markRecordsAsUploaded(records)
-                            self.lastUploadStatus = "成功上传 \(records.count) 条记录"
-                            completion(true, "成功上传 \(records.count) 条记录")
-                        } else {
-                            var message = "上传失败，状态码: \(statusCode)"
-                            
-                            if let data = data, let responseString = String(data: data, encoding: .utf8) {
-                                message += ", 响应: \(responseString)"
-                            }
-                            
-                            self.lastUploadStatus = message
-                            completion(false, message)
-                        }
-                    }
-                }
-            }
-            
-            task.resume()
-            
-        } catch {
-            DispatchQueue.main.async {
-                self.isUploading = false
-                self.lastUploadStatus = "序列化数据失败: \(error.localizedDescription)"
-                completion(false, "序列化数据失败: \(error.localizedDescription)")
-            }
-        }
-    }
     
     // 标记记录为已上传
     private func markRecordsAsUploaded(_ records: [LocationRecord]) {

@@ -23,13 +23,13 @@ struct EHE_PilotApp: App {
         // 初始化LocationManager单例
         _ = LocationManager.shared
         
-        // 不再在这里注册背景任务，而是统一在AppDelegate中注册
+        // BGTaskScheduler注册会在AppDelegate中进行，避免重复注册
     }
 
     var body: some Scene {
         WindowGroup {
             MainView()
-                .environmentObject(AppDelegate.shared.authManager) // 使用AppDelegate中的单例
+                .environmentObject(AppDelegate.shared.authManager)
                 .environmentObject(locationManager)
                 .environment(\.managedObjectContext, persistenceController.container.viewContext)
                 .onOpenURL { url in
@@ -48,9 +48,24 @@ struct EHE_PilotApp: App {
             case .active:
                 // 应用进入前台时启动前台定位更新
                 LocationManager.shared.startForegroundUpdates()
-            case .background, .inactive:
-                // 背景或非活跃时停止前台定位
+                
+                // 验证认证状态
+                AppDelegate.shared.authManager.handleAppResume()
+                
+                // 安排后台任务
+                BackgroundRefreshManager.shared.applicationDidBecomeActive()
+                
+            case .background:
+                // 安排后台任务
+                BackgroundRefreshManager.shared.applicationDidEnterBackground()
+                
+                // 停止前台定位
                 LocationManager.shared.stopForegroundUpdates()
+                
+            case .inactive:
+                // 非活跃状态不做特殊处理
+                break
+                
             @unknown default:
                 break
             }

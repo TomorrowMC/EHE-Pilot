@@ -11,6 +11,7 @@
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
 		<string>com.EHE-Pilot.LocationUpdate</string>
+        <string>com.EHE-Pilot.AuthRefresh</string>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>

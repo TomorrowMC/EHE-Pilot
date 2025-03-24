@@ -541,4 +541,81 @@ class AuthManager: ObservableObject {
         
         task.resume()
     }
+    func verifyTokenValidity(completion: @escaping (Bool) -> Void) {
+        guard let accessToken = currentAccessToken() else {
+            isAuthenticated = false
+            completion(false)
+            return
+        }
+        
+        // 选择一个轻量级API端点来验证令牌有效性
+        let baseURLString = issuerURL.absoluteString.replacingOccurrences(of: "/o", with: "")
+        guard let url = URL(string: "\(baseURLString)/api/v1/users/profile") else {
+            completion(false)
+            return
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            guard let self = self else { return }
+            
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("Token validation error: \(error.localizedDescription)")
+                    // 令牌可能仍然有效，但网络问题导致请求失败
+                    // 不要立即判断为无效，以避免不必要的登出
+                    completion(true)
+                    return
+                }
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    completion(false)
+                    return
+                }
+                
+                if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                    // 令牌无效或过期
+                    print("Token invalid - status code: \(httpResponse.statusCode)")
+                    self.isAuthenticated = false
+                    completion(false)
+                } else if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
+                    // 令牌有效
+                    if let data = data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                        // 更新配置文件数据
+                        self.profileData = json
+                    }
+                    completion(true)
+                } else {
+                    // 其他错误，保持当前状态
+                    print("Unexpected status code during token validation: \(httpResponse.statusCode)")
+                    completion(true)
+                }
+            }
+        }
+        
+        task.resume()
+    }
+    /// 处理应用从后台恢复
+    func handleAppResume() {
+        // 如果已认证，验证令牌是否仍然有效
+        if isAuthenticated {
+            verifyTokenValidity { [weak self] isValid in
+                guard let self = self else { return }
+                
+                if !isValid {
+                    // 令牌无效，尝试刷新
+                    self.refreshTokenIfNeeded { token in
+                        if token == nil {
+                            // 无法刷新令牌，需要重新登录
+                            self.isAuthenticated = false
+                            self.statusMessage = "Session expired, please sign in again"
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

@@ -18,10 +18,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     let authManager = AuthManager()
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
-        // Register background tasks
-        BGTaskScheduler.shared.register(forTaskWithIdentifier: "com.EHE-Pilot.LocationUpdate", using: nil) { task in
-            self.handleLocationUpdateTask(task: task as! BGAppRefreshTask)
-        }
+        // 初始化并注册后台刷新管理器
+        BackgroundRefreshManager.shared.registerBackgroundTasks()
         
         return true
     }
@@ -34,39 +32,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return false
     }
     
-    func handleLocationUpdateTask(task: BGAppRefreshTask) {
-        // Schedule next task before this one expires
-        scheduleLocationUpdateTask()
-        
-        let taskIdentifier = task.identifier
-        print("Background task started: \(taskIdentifier)")
-        
-        // Create a task completion handler
-        let taskCompletionHandler = { (success: Bool) in
-            task.setTaskCompleted(success: success)
-            print("Background task completed: \(success)")
-        }
-        
-        // Set expiration handler
-        task.expirationHandler = {
-            taskCompletionHandler(false)
-        }
-        
-        // Perform location update
-        LocationManager.shared.handleBackgroundTask(task)
+    func applicationDidBecomeActive(_ application: UIApplication) {
+        // 应用激活时验证认证状态并安排任务
+        BackgroundRefreshManager.shared.applicationDidBecomeActive()
     }
     
-    func scheduleLocationUpdateTask() {
-        let request = BGAppRefreshTaskRequest(identifier: "com.EHE-Pilot.LocationUpdate")
-        // Schedule for 15 minutes later
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
-        
-        do {
-            try BGTaskScheduler.shared.submit(request)
-            print("Background task scheduled")
-        } catch {
-            print("Failed to schedule background task: \(error)")
-        }
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        // 应用进入后台时安排任务
+        BackgroundRefreshManager.shared.applicationDidEnterBackground()
     }
 }
 
@@ -81,8 +54,13 @@ class SceneDelegate: NSObject, UIWindowSceneDelegate {
         }
     }
     
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        // 场景激活时验证认证状态
+        BackgroundRefreshManager.shared.applicationDidBecomeActive()
+    }
+    
     func sceneDidEnterBackground(_ scene: UIScene) {
-        // Schedule background tasks when app enters background
-        AppDelegate.shared.scheduleLocationUpdateTask()
+        // 场景进入后台时安排任务
+        BackgroundRefreshManager.shared.applicationDidEnterBackground()
     }
 }

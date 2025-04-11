@@ -1,3 +1,4 @@
+//AuthManager.swift
 import SwiftUI
 import AppAuth
 import Foundation
@@ -885,7 +886,280 @@ class AuthManager: ObservableObject {
         task.resume()
     }
     
-    // 在AuthManager类中添加此方法
+
+    // 解析邀请链接并提取授权码
+    func parseInvitationLink(url: String) -> String? {
+        guard !url.isEmpty else {
+            print("URL为空")
+            return nil
+        }
+        
+        print("尝试解析邀请链接: \(url)")
+        
+        // 直接检查URL是否已经是一个授权码
+        if url.count >= 8 && url.count <= 64 && !url.contains(" ") && !url.contains("http") {
+            print("URL可能已经是授权码: \(url)")
+            return url
+        }
+        
+        // 尝试提取链接中的授权码
+        
+        // 检查是否包含cloud_sharing_code
+        if url.contains("cloud_sharing_code=") {
+            if let range = url.range(of: "cloud_sharing_code=") {
+                let startIndex = range.upperBound
+                var code = String(url[startIndex...])
+                
+                // 如果URL还有其他参数，只取到&之前的部分
+                if let endIndex = code.firstIndex(of: "&") {
+                    code = String(code[..<endIndex])
+                }
+                
+                // 如果代码包含域名，提取后半部分
+                if let separatorIndex = code.firstIndex(of: "|") {
+                    let extractedCode = String(code[code.index(after: separatorIndex)...])
+                    print("从cloud_sharing_code中提取的授权码: \(extractedCode)")
+                    return extractedCode
+                }
+                
+                print("从URL中提取的完整授权码: \(code)")
+                return code
+            }
+        }
+        
+        // 尝试将URL解析为URLComponents
+        guard let url = URL(string: url),
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: true) else {
+            print("无法解析URL为组件")
+            return nil
+        }
+        
+        // 检查查询参数
+        if let queryItems = components.queryItems {
+            // 查找code参数
+            if let codeItem = queryItems.first(where: { $0.name == "code" }) {
+                print("从code参数中提取的授权码: \(codeItem.value ?? "")")
+                return codeItem.value
+            }
+            
+            // 查找referrer参数
+            if let referrerItem = queryItems.first(where: { $0.name == "referrer" }) {
+                guard let value = referrerItem.value else { return nil }
+                
+                if value.contains("cloud_sharing_code=") {
+                    if let range = value.range(of: "cloud_sharing_code=") {
+                        let startIndex = range.upperBound
+                        let code = String(value[startIndex...])
+                        
+                        // 如果代码包含域名，提取后半部分
+                        if let separatorIndex = code.firstIndex(of: "|") {
+                            let extractedCode = String(code[code.index(after: separatorIndex)...])
+                            print("从referrer参数中提取的授权码: \(extractedCode)")
+                            return extractedCode
+                        }
+                        
+                        print("从referrer参数中提取的完整授权码: \(code)")
+                        return code
+                    }
+                }
+            }
+        }
+        
+        // 如果上面的方法都失败，尝试从完整URL中匹配最后一个路径组件
+        let urlString = url.absoluteString
+        if let lastComponent = urlString.split(separator: "/").last {
+            let potentialCode = String(lastComponent)
+            
+            // 如果最后一个组件看起来像授权码（长度适中且没有特殊字符）
+            if potentialCode.count >= 8 && potentialCode.count <= 64 &&
+               potentialCode.rangeOfCharacter(from: CharacterSet(charactersIn: "?&=")) == nil {
+                print("从URL路径中提取的可能授权码: \(potentialCode)")
+                return potentialCode
+            }
+        }
+        
+        print("无法从URL中提取授权码")
+        return nil
+    }
+
+    // 使用授权码登录
+    func loginWithAuthorizationCode(code: String, completion: @escaping (Bool) -> Void) {
+        // 确保已经发现了配置信息
+        if discoveryConfig == nil {
+            discoverConfiguration { [weak self] success in
+                guard let self = self, success else {
+                    DispatchQueue.main.async {
+                        self?.statusMessage = "无法发现配置信息"
+                        completion(false)
+                    }
+                    return
+                }
+                
+                // 现在已有配置信息，递归调用
+                self.loginWithAuthorizationCode(code: code, completion: completion)
+            }
+            return
+        }
+        
+        // 获取令牌端点
+        guard let tokenEndpoint = discoveryConfig?["token_endpoint"] as? String,
+              let tokenURL = URL(string: tokenEndpoint) else {
+            statusMessage = "缺少令牌端点"
+            completion(false)
+            return
+        }
+        
+        // 准备请求数据
+        let staticCodeVerifier = "f28984eaebcf41d881223399fc8eab27eaa374a9a8134eb3a900a3b7c0e6feab5b427479f3284ebe9c15b698849b0de2"
+        
+        // 可能的重定向URI列表（按可能性排序）
+        let possibleRedirectURIs = [
+            "https://ehepilot.com/auth/callback",
+            "ehepilot://oauth/callback",
+            "https://ehepilot.com",
+            "https://ehepilot.com/o/auth/callback",
+            "" // 空URI作为最后尝试
+        ]
+        
+        // 尝试使用第一个重定向URI
+        tryNextRedirectURI(index: 0, possibleURIs: possibleRedirectURIs)
+        
+        // 递归尝试不同的重定向URI
+        func tryNextRedirectURI(index: Int, possibleURIs: [String]) {
+            // 如果已经尝试了所有可能的URI，则失败
+            if index >= possibleURIs.count {
+                DispatchQueue.main.async {
+                    self.statusMessage = "所有可能的重定向URI都失败了"
+                    completion(false)
+                }
+                return
+            }
+            
+            // 使用当前索引的重定向URI
+            let redirectURI = possibleURIs[index]
+            print("尝试使用重定向URI: \(redirectURI)")
+            
+            // 构建请求参数
+            let parameters = [
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": redirectURI,
+                "client_id": clientID,
+                "code_verifier": staticCodeVerifier
+            ]
+            
+            var request = URLRequest(url: URL(string: tokenEndpoint)!)
+            request.httpMethod = "POST"
+            request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+            
+            // 转换参数为表单编码字符串
+            let formString = parameters.map { "\($0.key)=\($0.value)" }.joined(separator: "&")
+            request.httpBody = formString.data(using: .utf8)
+            
+            print("发送令牌请求，参数: \(formString)")
+            
+            // 发送请求
+            let task = URLSession.shared.dataTask(with: request) { data, response, error in
+                if let error = error {
+                    print("令牌交换错误: \(error.localizedDescription)")
+                    // 尝试下一个重定向URI
+                    DispatchQueue.main.async {
+                        tryNextRedirectURI(index: index + 1, possibleURIs: possibleURIs)
+                    }
+                    return
+                }
+                
+                guard let data = data,
+                      let httpResponse = response as? HTTPURLResponse else {
+                    print("无效的令牌响应")
+                    // 尝试下一个重定向URI
+                    DispatchQueue.main.async {
+                        tryNextRedirectURI(index: index + 1, possibleURIs: possibleURIs)
+                    }
+                    return
+                }
+                
+                // 打印响应信息以进行调试
+                print("令牌请求响应状态码: \(httpResponse.statusCode)")
+                if let responseString = String(data: data, encoding: .utf8) {
+                    print("响应内容: \(responseString)")
+                }
+                
+                // 检查是否需要尝试下一个重定向URI
+                if httpResponse.statusCode == 400 {
+                    let responseString = String(data: data, encoding: .utf8) ?? ""
+                    if responseString.contains("Mismatching redirect URI") ||
+                       responseString.contains("invalid_request") {
+                        print("重定向URI不匹配，尝试下一个")
+                        DispatchQueue.main.async {
+                            tryNextRedirectURI(index: index + 1, possibleURIs: possibleURIs)
+                        }
+                        return
+                    }
+                }
+                
+                // 检查状态码
+                if httpResponse.statusCode == 200 {
+                    do {
+                        if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                            DispatchQueue.main.async {
+                                self.tokenResponse = json
+                                
+                                // 提取访问令牌和刷新令牌
+                                if let accessToken = json["access_token"] as? String,
+                                   let refreshToken = json["refresh_token"] as? String {
+                                    
+                                    // 提取过期时间，如果没有则使用默认值
+                                    let expiresIn = json["expires_in"] as? TimeInterval ?? 3600
+                                    
+                                    // 保存令牌到KeyChain
+                                    self.saveTokens(accessToken: accessToken, refreshToken: refreshToken, expiresIn: expiresIn)
+                                    
+                                    self.isAuthenticated = true
+                                    self.statusMessage = "授权码登录成功"
+                                    
+                                    // 获取用户资料
+                                    self.fetchUserProfile { _ in }
+                                    
+                                    // 记录成功的重定向URI，以便将来使用
+                                    print("成功使用重定向URI: \(redirectURI)")
+                                    UserDefaults.standard.set(redirectURI, forKey: "lastSuccessfulRedirectURI")
+                                    
+                                    completion(true)
+                                } else {
+                                    print("响应中缺少令牌")
+                                    self.statusMessage = "响应中缺少令牌"
+                                    completion(false)
+                                }
+                            }
+                        } else {
+                            print("无法解析令牌响应")
+                            // 尝试下一个重定向URI
+                            DispatchQueue.main.async {
+                                tryNextRedirectURI(index: index + 1, possibleURIs: possibleURIs)
+                            }
+                        }
+                    } catch {
+                        print("解析令牌响应错误: \(error.localizedDescription)")
+                        // 尝试下一个重定向URI
+                        DispatchQueue.main.async {
+                            tryNextRedirectURI(index: index + 1, possibleURIs: possibleURIs)
+                        }
+                    }
+                } else {
+                    print("令牌请求失败，状态码: \(httpResponse.statusCode)")
+                    // 尝试下一个重定向URI
+                    DispatchQueue.main.async {
+                        tryNextRedirectURI(index: index + 1, possibleURIs: possibleURIs)
+                    }
+                }
+            }
+            
+            task.resume()
+        }
+    }
+    
+    
     func syncCurrentTokensToKeyChain() -> Bool {
         if let accessToken = currentAccessToken(),
            let refreshToken = tokenResponse?["refresh_token"] as? String {

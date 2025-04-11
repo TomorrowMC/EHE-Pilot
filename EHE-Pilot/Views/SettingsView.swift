@@ -10,6 +10,7 @@ struct SettingsView: View {
     @State private var csvFileURL: URL? // 用于存储导出后的CSV文件路径
     @State private var showingUserProfile = false
     @State private var showingConsentManager = false
+    @State private var isProcessingLogin: Bool = false
     
     var body: some View {
         NavigationStack{
@@ -53,17 +54,8 @@ struct SettingsView: View {
                         }
                         .foregroundColor(.red)
                     } else {
-                        Button(action: {
-                            authManager.signIn()
-                        }) {
-                            HStack {
-                                Text("Sign In")
-                                Spacer()
-                                Image(systemName: "arrow.right.circle.fill")
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                        .foregroundColor(.blue)
+                        // 登录选项
+                        loginOptionsView
                     }
                 }
                 
@@ -163,6 +155,95 @@ struct SettingsView: View {
             } message: {
                 Text("Are you sure you want to reset all location data? This action cannot be undone.")
             }
+            .overlay(
+                ZStack {
+                    if isProcessingLogin {
+                        Color.black.opacity(0.4)
+                            .edgesIgnoringSafeArea(.all)
+                        
+                        VStack {
+                            ProgressView()
+                                .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                .scaleEffect(1.5)
+                            
+                            Text("Signing in...")
+                                .foregroundColor(.white)
+                                .padding(.top, 20)
+                        }
+                        .padding(20)
+                        .background(Color(UIColor.systemBackground).opacity(0.8))
+                        .cornerRadius(10)
+                        .shadow(radius: 10)
+                    }
+                }
+            )
+        }
+    }
+    
+    // 登录选项视图
+    private var loginOptionsView: some View {
+        VStack(spacing: 16) {
+            // 用户名密码登录按钮
+            Button {
+                authManager.signIn()
+            } label: {
+                HStack {
+                    Image(systemName: "person.fill")
+                        .foregroundColor(.white)
+                        .padding(.trailing, 8)
+                    Text("Sign in with Username")
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color.blue)
+                .cornerRadius(8)
+            }
+            .buttonStyle(PlainButtonStyle()) // 添加这一行
+            
+            // 邀请链接登录按钮
+            Button {
+                loginWithClipboard()
+            } label: {
+                HStack {
+                    Image(systemName: "link")
+                        .foregroundColor(.white)
+                        .padding(.trailing, 8)
+                    Text("Sign in with Invitation Link")
+                        .foregroundColor(.white)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color.green)
+                .cornerRadius(8)
+            }
+            .buttonStyle(PlainButtonStyle()) // 添加这一行
+        }
+        .padding(.vertical, 4)
+    }
+    
+    private func loginWithClipboard() {
+        if let _ = ClipboardLoginHelper.shared.getInvitationCodeFromClipboard() {
+            isProcessingLogin = true
+            
+            ClipboardLoginHelper.shared.loginWithClipboardContent(authManager: authManager) { success in
+                isProcessingLogin = false
+                
+                if success {
+                    // Show success alert
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        ClipboardLoginHelper.shared.showLoginSuccessAlert()
+                    }
+                } else {
+                    // Show error if login failed
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        ClipboardLoginHelper.shared.showLoginFailedAlert()
+                    }
+                }
+            }
+        } else {
+            // No invitation link in clipboard
+            ClipboardLoginHelper.shared.showNoInvitationLinkAlert()
         }
     }
     

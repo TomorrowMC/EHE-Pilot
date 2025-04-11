@@ -54,6 +54,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
     
     func applicationDidBecomeActive(_ application: UIApplication) {
+        TokenRefreshManager.shared.applicationDidBecomeActive()
         // 应用激活时验证认证状态并安排任务
         BackgroundRefreshManager.shared.applicationDidBecomeActive()
         
@@ -82,6 +83,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func applicationDidEnterBackground(_ application: UIApplication) {
         // 应用进入后台时安排任务
         BackgroundRefreshManager.shared.applicationDidEnterBackground()
+        TokenRefreshManager.shared.applicationDidEnterBackground()
     }
     
     // 根据需要触发数据上传

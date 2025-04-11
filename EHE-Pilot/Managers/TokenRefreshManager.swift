@@ -1,3 +1,13 @@
+//
+//  TokenRefreshManager.swift
+//  EHE-Pilot
+//
+//  Created by 胡逸飞 on 2025/3/25.
+//
+
+import SwiftUICore
+
+
 // 新增TokenRefreshManager类
 class TokenRefreshManager {
     static let shared = TokenRefreshManager()

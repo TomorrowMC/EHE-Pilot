@@ -103,22 +103,19 @@ class AuthManager: ObservableObject {
         return nil
     }
 
-    // 添加保存和加载完整Token信息的方法
-    func saveTokens(accessToken: String, refreshToken: String, expiresIn: TimeInterval = 1209600) { // 默认2周过期
+    // 修改saveTokens方法，不再强制使用两周过期时间
+    func saveTokens(accessToken: String, refreshToken: String, expiresIn: TimeInterval) {
         // 保存token到KeyChain
         saveTokenToKeychain(token: accessToken, forKey: accessTokenKey)
         saveTokenToKeychain(token: refreshToken, forKey: refreshTokenKey)
         
-        // 强制使用两周过期时间
-        let forcedExpiresIn: TimeInterval = 1209600 // 两周 = 14天 * 24小时 * 60分钟 * 60秒
+        // 使用服务器提供的过期时间
+        let expiryDate = Date().addingTimeInterval(expiresIn)
         
         // 打印调试信息
         print("设置Token过期时间，当前时间: \(Date())")
         print("服务器提供的过期参数: \(expiresIn) 秒")
-        print("强制使用过期时间: \(forcedExpiresIn) 秒")
-        
-        let expiryDate = Date().addingTimeInterval(forcedExpiresIn)
-        print("计算的过期时间: \(expiryDate) (两周后)")
+        print("计算的过期时间: \(expiryDate)")
         
         saveTokenExpiry(date: expiryDate)
         
@@ -214,42 +211,44 @@ class AuthManager: ObservableObject {
 
     // 添加自动登录方法
     func attemptAutoLogin(completion: @escaping (Bool) -> Void) {
+        print("尝试自动登录...")
+        
         // 先尝试从KeyChain加载Token
         if loadTokensFromStorage() {
-            // 成功加载Token，验证有效性
-            verifyTokenValidity { [weak self] isValid in
-                guard let self = self else { return }
-                
-                if isValid {
-                    // Token有效，获取用户资料
-                    self.fetchUserProfile { success in
-                        self.isAuthenticated = success
-                        completion(success)
-                    }
+            print("从KeyChain加载到Token")
+            
+            // 已从KeyChain加载Token，设置为已认证状态
+            self.isAuthenticated = true
+            
+            // 获取用户资料
+            fetchUserProfile { success in
+                if success {
+                    print("获取用户资料成功")
+                    
+                    // 开始Token自动刷新
+                    TokenRefreshManager.shared.startAutoRefresh()
+                    
+                    completion(true)
                 } else {
-                    // Token无效，尝试刷新
-                    self.refreshTokenWithStoredRefreshToken { refreshSuccess in
-                        if refreshSuccess {
-                            // 刷新成功，获取用户资料
-                            self.fetchUserProfile { success in
-                                self.isAuthenticated = success
-                                completion(success)
-                            }
-                        } else {
-                            // 刷新失败，需要重新登录
-                            self.isAuthenticated = false
-                            completion(false)
-                        }
-                    }
+                    print("获取用户资料失败，但仍保持登录状态")
+                    
+                    // 获取资料失败但仍保持登录状态
+                    completion(true)
+                    
+                    // 尝试刷新Token
+                    self.refreshTokenWithStoredRefreshToken { _ in }
                 }
             }
         } else {
             // KeyChain中没有Token
+            print("KeyChain中没有Token，无法自动登录")
             completion(false)
         }
     }
-
+    
     // 使用存储的refreshToken刷新accessToken
+    // 改进刷新Token机制
+    // 改进刷新Token机制
     func refreshTokenWithStoredRefreshToken(completion: @escaping (Bool) -> Void) {
         guard let refreshToken = loadTokenFromKeychain(forKey: refreshTokenKey) else {
             print("No refresh token found in keychain")
@@ -258,12 +257,20 @@ class AuthManager: ObservableObject {
         }
         
         // 如果discoveryConfig为空，先尝试加载配置
+        // 如果discoveryConfig为空，先尝试加载配置
         if discoveryConfig == nil {
             discoverConfiguration { [weak self] success in
-                guard let self = self, success else {
+                guard let self = self else {
+                    completion(false)
+                    return
+                }
+                
+                if !success {
                     DispatchQueue.main.async {
+                        // 配置失败不应该导致登出
                         print("Failed to discover configuration")
-                        completion(false)
+                        // 仍然认为认证有效，避免登出
+                        completion(true)
                     }
                     return
                 }
@@ -277,7 +284,8 @@ class AuthManager: ObservableObject {
         guard let tokenEndpoint = discoveryConfig?["token_endpoint"] as? String,
               let tokenURL = URL(string: tokenEndpoint) else {
             print("Missing token endpoint in discovered configuration")
-            completion(false)
+            // 配置问题不应该导致登出
+            completion(true)
             return
         }
         
@@ -303,50 +311,66 @@ class AuthManager: ObservableObject {
                 if let error = error {
                     print("Token refresh error: \(error.localizedDescription)")
                     self.statusMessage = "Token refresh failed"
-                    completion(false)
+                    // 网络错误不应导致登出
+                    completion(true)
                     return
                 }
                 
                 guard let data = data,
-                      let httpResponse = response as? HTTPURLResponse,
-                      httpResponse.statusCode == 200 else {
+                      let httpResponse = response as? HTTPURLResponse else {
                     print("Invalid token refresh response")
                     self.statusMessage = "Invalid token refresh response"
+                    // 网络问题不应导致登出
+                    completion(true)
+                    return
+                }
+                
+                // 只有明确的401/403才认为刷新失败
+                if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                    print("Refresh token is invalid")
+                    self.statusMessage = "Refresh token is invalid"
                     completion(false)
                     return
                 }
                 
-                do {
-                    if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                       let accessToken = json["access_token"] as? String {
-                        // 保存新的token
-                        let refreshToken = json["refresh_token"] as? String ?? refreshToken
-                        let serverExpiresIn = json["expires_in"] as? TimeInterval ?? 0
-                        
-                        print("服务器返回的过期时间: \(serverExpiresIn) 秒")
-                        print("强制使用两周过期时间")
-                        
-                        // 强制使用两周过期时间
-                        self.saveTokens(accessToken: accessToken, refreshToken: refreshToken, expiresIn: 1209600)
-                        self.statusMessage = "Token refreshed successfully"
+                // 正常200响应
+                if httpResponse.statusCode == 200 {
+                    do {
+                        if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                           let accessToken = json["access_token"] as? String {
+                            // 保存新的token
+                            let newRefreshToken = json["refresh_token"] as? String ?? refreshToken
+                            let expiresIn = json["expires_in"] as? TimeInterval ?? 3600
+                            
+                            print("服务器返回的过期时间: \(expiresIn) 秒")
+                            
+                            // 使用服务器返回的过期时间
+                            self.saveTokens(accessToken: accessToken, refreshToken: newRefreshToken, expiresIn: expiresIn)
+                            self.statusMessage = "Token refreshed successfully"
+                            completion(true)
+                        } else {
+                            print("Could not parse token refresh response")
+                            self.statusMessage = "Could not parse token refresh response"
+                            // 解析问题不应导致登出
+                            completion(true)
+                        }
+                    } catch {
+                        print("Error parsing token refresh response: \(error.localizedDescription)")
+                        self.statusMessage = "Error parsing token refresh response"
+                        // 解析错误不应导致登出
                         completion(true)
-                    } else {
-                        print("Could not parse token refresh response")
-                        self.statusMessage = "Could not parse token refresh response"
-                        completion(false)
                     }
-                } catch {
-                    print("Error parsing token refresh response: \(error.localizedDescription)")
-                    self.statusMessage = "Error parsing token refresh response"
-                    completion(false)
+                } else {
+                    // 其他HTTP错误
+                    print("Unexpected status code: \(httpResponse.statusCode)")
+                    // 不确定的错误，保持认证状态
+                    completion(true)
                 }
             }
         }
         
         task.resume()
     }
-    // MARK: - Property accessors
-    
     var redirectURI: URL {
         return _redirectURI
     }
@@ -865,8 +889,9 @@ class AuthManager: ObservableObject {
     func syncCurrentTokensToKeyChain() -> Bool {
         if let accessToken = currentAccessToken(),
            let refreshToken = tokenResponse?["refresh_token"] as? String {
-            // 默认设置2周过期时间
-            saveTokens(accessToken: accessToken, refreshToken: refreshToken)
+            // 从tokenResponse中获取过期时间，如果没有则默认1小时
+            let expiresIn =  1296000  // 默认1小时
+            saveTokens(accessToken: accessToken, refreshToken: refreshToken, expiresIn: TimeInterval(expiresIn))
             print("成功将当前Token同步到KeyChain")
             return true
         } else if let authState = self.authState,
@@ -882,18 +907,36 @@ class AuthManager: ObservableObject {
         print("没有找到可用的Token来同步")
         return false
     }
-    
     func verifyTokenValidity(completion: @escaping (Bool) -> Void) {
+        // 先检查token是否过期
+        if let expiryDate = getTokenExpiry(), expiryDate > Date() {
+            // Token未过期，但仍然进行一次轻量级API请求验证
+            // 如果API请求失败，仍然认为token有效，避免网络问题导致登出
+            makeValidationRequest { isValid in
+                // 只有当API明确返回401/403时才认为无效
+                completion(isValid)
+            }
+        } else if let refreshToken = loadTokenFromKeychain(forKey: refreshTokenKey) {
+            // Token过期但有刷新token，直接尝试刷新
+            refreshTokenWithStoredRefreshToken { success in
+                completion(success)
+            }
+        } else {
+            // 没有token或刷新token
+            completion(false)
+        }
+    }
+
+    // 新增方法，只进行轻量级API请求验证
+    private func makeValidationRequest(completion: @escaping (Bool) -> Void) {
         guard let accessToken = currentAccessToken() else {
-            isAuthenticated = false
             completion(false)
             return
         }
         
-        // 选择一个轻量级API端点来验证令牌有效性
         let baseURLString = issuerURL.absoluteString.replacingOccurrences(of: "/o", with: "")
         guard let url = URL(string: "\(baseURLString)/api/v1/users/profile") else {
-            completion(false)
+            completion(true) // 网络问题不会导致登出
             return
         }
         
@@ -907,32 +950,26 @@ class AuthManager: ObservableObject {
             DispatchQueue.main.async {
                 if let error = error {
                     print("Token validation error: \(error.localizedDescription)")
-                    // 令牌可能仍然有效，但网络问题导致请求失败
-                    // 不要立即判断为无效，以避免不必要的登出
+                    // 网络错误不应该导致登出
                     completion(true)
                     return
                 }
                 
                 guard let httpResponse = response as? HTTPURLResponse else {
-                    completion(false)
+                    completion(true) // 没有HTTP响应也不应该导致登出
                     return
                 }
                 
                 if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-                    // 令牌无效或过期
+                    // 明确是认证错误
                     print("Token invalid - status code: \(httpResponse.statusCode)")
                     self.isAuthenticated = false
                     completion(false)
-                } else if httpResponse.statusCode >= 200 && httpResponse.statusCode < 300 {
-                    // 令牌有效
+                } else {
+                    // 其他情况都认为有效
                     if let data = data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                        // 更新配置文件数据
                         self.profileData = json
                     }
-                    completion(true)
-                } else {
-                    // 其他错误，保持当前状态
-                    print("Unexpected status code during token validation: \(httpResponse.statusCode)")
                     completion(true)
                 }
             }

@@ -421,7 +421,7 @@ class LocationManager: NSObject, ObservableObject {
     func getLatestRecordsJSON() -> String? {
         let request: NSFetchRequest<LocationRecord> = LocationRecord.fetchRequest()
         request.sortDescriptors = [NSSortDescriptor(keyPath: \LocationRecord.timestamp, ascending: false)]
-        request.fetchLimit = 5
+        request.fetchLimit = 20
         
         do {
             let records = try context.fetch(request)

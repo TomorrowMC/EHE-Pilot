@@ -143,7 +143,7 @@ class JHDataExchangeManager: ObservableObject {
         }
         
         // Get location records
-        let records = fetchLocationRecords(limit: 5) // Upload 5 records at a time
+        let records = fetchLocationRecords(limit: 20) // Upload 20 records at a time
         
         if records.isEmpty {
             DispatchQueue.main.async {

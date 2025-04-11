@@ -54,9 +54,27 @@ struct EHE_PilotApp: App {
                 // 应用进入前台时启动前台定位更新
                 LocationManager.shared.startForegroundUpdates()
                 
-                // 验证认证状态
-                AppDelegate.shared.authManager.handleAppResume()
-                
+                // 验证认证状态 - 更改为更可靠的方法
+                if AppDelegate.shared.authManager.isAuthenticated {
+                    // 只检查，不进行会导致登出的API调用
+                    if let expiryDate = AppDelegate.shared.authManager.getTokenExpiry(),
+                       expiryDate > Date() {
+                        // Token未过期，保持登录状态
+                        print("Token still valid until \(expiryDate)")
+                    } else {
+                        // Token已过期，尝试刷新
+                        AppDelegate.shared.authManager.refreshTokenWithStoredRefreshToken { success in
+                            if success {
+                                print("Token refreshed automatically")
+                            } else {
+                                print("Token refresh failed, but not logging out")
+                            }
+                        }
+                    }
+                } else if AppDelegate.shared.authManager.loadTokensFromStorage() {
+                    // 如果未认证但有存储的tokens，尝试恢复会话
+                    AppDelegate.shared.attemptAutoLogin()
+                }
                 // 安排后台任务
                 BackgroundRefreshManager.shared.applicationDidBecomeActive()
                 

@@ -130,132 +130,169 @@ struct StatisticsView: View {
     
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: 20) {
-                    
-                    // 日期选择区域
-                    HStack {
-                        Button(action: {
-                            selectedDate = Calendar.current.date(byAdding: .day, value: -1, to: selectedDate)!
-                            fetchRecords(for: selectedDate)
-                        }) {
-                            Image(systemName: "chevron.left")
-                                .font(.title2)
-                        }
+            // 将 ScrollView 包装在 ZStack 中，以便叠加按钮
+            ZStack(alignment: .bottomTrailing) { // ZStack 用于层叠视图
+                ScrollView {
+                    VStack(spacing: 20) {
                         
-                        Text(displayDateFormatter.string(from: selectedDate))
-                            .font(.headline)
-                            .padding(.horizontal)
-                        
-                        Button(action: {
-                            selectedDate = Calendar.current.date(byAdding: .day, value: 1, to: selectedDate)!
-                            fetchRecords(for: selectedDate)
-                        }) {
-                            Image(systemName: "chevron.right")
-                                .font(.title2)
-                        }
-                    }
-                    .padding(.top, 20)
-                    
-                    // Custom header for statistics
-                    VStack(spacing: 12) {
-                        Image(systemName: "chart.bar.xaxis")
-                            .font(.system(size: 40, weight: .bold))
-                            .foregroundColor(.blue)
-                        Text("Statistics")
-                            .font(.title2)
-                            .fontWeight(.semibold)
-                    }
-                    
-                    // Statistics card
-                    VStack(spacing: 12) {
-                        statisticsRow(title: "Time Away", value: formatTimeInterval(totalTimeAway))
-                        Divider()
-                        statisticsRow(title: "Time Outdoors",
-                                    value: formatTimeInterval(totalTimeOutdoors))
-                        Divider()
-                        statisticsRow(title: "Location Points", value: "\(records.count)")
-                        Divider()
-                        statisticsRow(title: "Current Status",
-                                    value: locationManager.currentLocationStatus ? "At Home" : "Away",
-                                    valueColor: locationManager.currentLocationStatus ? .green : .orange)
-                    }
-                    .padding()
-                    .background(.regularMaterial)
-                    .cornerRadius(12)
-                    .padding(.horizontal)
-                    
-                    // Location records section for selected date
-                    VStack(alignment: .leading, spacing: 15) {
-                        Text("\(displayDateFormatter.string(from: selectedDate))'s Location Records")
-                            .font(.headline)
-                            .padding(.horizontal)
-                        
-                        if records.isEmpty {
-                            Text("No records for this day.")
-                                .foregroundColor(.secondary)
+                        // 日期选择区域
+                        HStack {
+                            Button(action: {
+                                selectedDate = Calendar.current.date(byAdding: .day, value: -1, to: selectedDate)!
+                                fetchRecords(for: selectedDate)
+                            }) {
+                                Image(systemName: "chevron.left")
+                                    .font(.title2)
+                            }
+                            
+                            Text(displayDateFormatter.string(from: selectedDate))
+                                .font(.headline)
                                 .padding(.horizontal)
-                        } else {
-                            let sortedByTimestamp = records.sorted { ($0.timestamp ?? Date.distantPast) > ($1.timestamp ?? Date.distantPast) }
-                            ForEach(sortedByTimestamp, id: \.objectID) { record in
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack {
-                                        Text("Lat: \(record.latitude, specifier: "%.4f") | Lon: \(record.longitude, specifier: "%.4f")")
-                                            .font(.subheadline)
-                                            .foregroundColor(.primary)
-                                        Spacer()
-                                        // 根据ifUpdated显示标识
-                                        if record.ifUpdated {
-                                            Image(systemName: "checkmark.circle.fill")
-                                                .foregroundColor(.green)
-                                        } else {
-                                            Image(systemName: "xmark.circle.fill")
-                                                .foregroundColor(.red)
-                                        }
-                                    }
-                                    
-                                    HStack {
-                                        if record.isHome {
-                                            Label("At Home", systemImage: "house.fill")
-                                                .foregroundColor(.green)
-                                                .font(.caption)
-                                        } else {
-                                            let isOutdoors = record.gpsAccuracy == nil || record.gpsAccuracy?.doubleValue ?? 0 < 4.0
-                                            Label(isOutdoors ? "Outdoors" : "Indoor",
-                                                  systemImage: isOutdoors ? "sun.max.fill" : "building.2.fill")
-                                                .foregroundColor(isOutdoors ? .orange : .blue)
-                                                .font(.caption)
-                                        }
-                                        Spacer()
-                                        if let accuracy = record.gpsAccuracy {
-                                            Text("GPS: \(accuracy.doubleValue, specifier: "%.1f")m")
-                                                .font(.caption2)
-                                                .foregroundColor(accuracy.doubleValue < 4.0 ? .green :
-                                                               accuracy.doubleValue < 10.0 ? .orange : .red)
-                                        } else {
-                                            Text("GPS: N/A")
-                                                .font(.caption2)
-                                                .foregroundColor(.secondary)
-                                        }
-                                        if let timestamp = record.timestamp {
-                                            Text(dateFormatter.string(from: timestamp))
-                                                .font(.caption2)
-                                                .foregroundColor(.secondary)
-                                        }
-                                    }
+                            
+                            Button(action: {
+                                // 检查是否可以前进到未来一天（不允许选择未来日期）
+                                if let nextDay = Calendar.current.date(byAdding: .day, value: 1, to: selectedDate), nextDay <= Date() {
+                                    selectedDate = nextDay
+                                    fetchRecords(for: selectedDate)
                                 }
-                                .padding()
-                                .background(.ultraThinMaterial)
-                                .cornerRadius(8)
-                                .shadow(color: .black.opacity(0.05), radius: 3, x: 0, y: 2)
+                            }) {
+                                Image(systemName: "chevron.right")
+                                    .font(.title2)
+                                    // 如果明天超过今天，则禁用按钮
+                                    .foregroundColor(Calendar.current.isDateInTomorrow(selectedDate) || isToday(selectedDate) ? .gray : .blue)
+                            }
+                            .disabled(Calendar.current.isDateInTomorrow(selectedDate) || isToday(selectedDate)) // 禁用前进到未来的按钮
+
+
+                        }
+                        .padding(.top, 20)
+                        
+                        // Custom header for statistics
+                        VStack(spacing: 12) {
+                            Image(systemName: "chart.bar.xaxis")
+                                .font(.system(size: 40, weight: .bold))
+                                .foregroundColor(.blue)
+                            Text("Statistics")
+                                .font(.title2)
+                                .fontWeight(.semibold)
+                        }
+                        
+                        // Statistics card
+                        VStack(spacing: 12) {
+                            statisticsRow(title: "Time Away", value: formatTimeInterval(totalTimeAway))
+                            Divider()
+                            statisticsRow(title: "Time Outdoors",
+                                        value: formatTimeInterval(totalTimeOutdoors))
+                            Divider()
+                            statisticsRow(title: "Location Points", value: "\(records.count)")
+                            Divider()
+                            statisticsRow(title: "Current Status",
+                                        value: locationManager.currentLocationStatus ? "At Home" : "Away",
+                                        valueColor: locationManager.currentLocationStatus ? .green : .orange)
+                        }
+                        .padding()
+                        .background(.regularMaterial)
+                        .cornerRadius(12)
+                        .padding(.horizontal)
+                        
+                        // Location records section for selected date
+                        VStack(alignment: .leading, spacing: 15) {
+                            Text("\(displayDateFormatter.string(from: selectedDate))'s Location Records")
+                                .font(.headline)
                                 .padding(.horizontal)
+                            
+                            if records.isEmpty {
+                                Text("No records for this day.")
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal)
+                            } else {
+                                let sortedByTimestamp = records.sorted { ($0.timestamp ?? Date.distantPast) > ($1.timestamp ?? Date.distantPast) }
+                                ForEach(sortedByTimestamp, id: \.objectID) { record in
+                                    // ... (省略 Location Record 的代码)
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack {
+                                            Text("Lat: \(record.latitude, specifier: "%.4f") | Lon: \(record.longitude, specifier: "%.4f")")
+                                                .font(.subheadline)
+                                                .foregroundColor(.primary)
+                                            Spacer()
+                                            // 根据ifUpdated显示标识
+                                            if record.ifUpdated {
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .foregroundColor(.green)
+                                            } else {
+                                                Image(systemName: "xmark.circle.fill")
+                                                    .foregroundColor(.red)
+                                            }
+                                        }
+                                        
+                                        HStack {
+                                            if record.isHome {
+                                                Label("At Home", systemImage: "house.fill")
+                                                    .foregroundColor(.green)
+                                                    .font(.caption)
+                                            } else {
+                                                let isOutdoors = record.gpsAccuracy == nil || record.gpsAccuracy?.doubleValue ?? 0 < 4.0
+                                                Label(isOutdoors ? "Outdoors" : "Indoor",
+                                                      systemImage: isOutdoors ? "sun.max.fill" : "building.2.fill")
+                                                    .foregroundColor(isOutdoors ? .orange : .blue)
+                                                    .font(.caption)
+                                            }
+                                            Spacer()
+                                            if let accuracy = record.gpsAccuracy {
+                                                Text("GPS: \(accuracy.doubleValue, specifier: "%.1f")m")
+                                                    .font(.caption2)
+                                                    .foregroundColor(accuracy.doubleValue < 4.0 ? .green :
+                                                                   accuracy.doubleValue < 10.0 ? .orange : .red)
+                                            } else {
+                                                Text("GPS: N/A")
+                                                    .font(.caption2)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                            if let timestamp = record.timestamp {
+                                                Text(dateFormatter.string(from: timestamp))
+                                                    .font(.caption2)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+                                    }
+                                    .padding()
+                                    .background(.ultraThinMaterial)
+                                    .cornerRadius(8)
+                                    .shadow(color: .black.opacity(0.05), radius: 3, x: 0, y: 2)
+                                    .padding(.horizontal)
+
+                                }
                             }
                         }
+                        .padding(.bottom, 20) // 给底部留出空间给按钮
                     }
-                    .padding(.bottom, 20)
+                    .padding(.top)
+                    .padding(.bottom, 60) // 增加 ScrollView 底部 padding，防止按钮遮挡内容
+                } // 结束 ScrollView
+                
+                // --- 添加回到今天按钮 ---
+                if !isToday(selectedDate) { // 仅当选择的日期不是今天时显示
+                    Button {
+                        selectedDate = Date() // 设置为今天
+                        fetchRecords(for: selectedDate) // 重新获取数据
+                    } label: {
+                        Label("Go to Today", systemImage: "arrow.uturn.backward.circle.fill")
+                            .font(.system(size: 14, weight: .medium)) // 调整字体大小和粗细
+                            .padding(.vertical, 8)   // 调整垂直内边距
+                            .padding(.horizontal, 12) // 调整水平内边距
+                            .background(.blue)
+                            .foregroundColor(.white)
+                            .clipShape(Capsule()) // 使用胶囊形状
+                            .shadow(radius: 5) // 添加阴影
+                    }
+                    .padding(.trailing, 20) // 右边距
+                    .padding(.bottom, 20) // 下边距
+                    .transition(.scale.combined(with: .opacity)) // 添加过渡动画
+                    .animation(.easeInOut, value: isToday(selectedDate)) // 关联动画到状态变化
                 }
-                .padding(.top)
-            }
+                // --- 结束回到今天按钮 ---
+
+            } // 结束 ZStack
             .navigationTitle("Statistics")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -267,7 +304,13 @@ struct StatisticsView: View {
             .onAppear {
                 fetchRecords(for: selectedDate)
             }
-        }
+            // 添加 sheet 用于分享 (如果需要的话)
+            .sheet(isPresented: $showShareSheet) {
+                 if let url = shareURL {
+                     ShareSheet(activityItems: [url])
+                 }
+             }
+        } // 结束 NavigationView
     }
     
     var uploadButton: some View {

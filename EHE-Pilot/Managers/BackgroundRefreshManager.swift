@@ -16,11 +16,12 @@ class BackgroundRefreshManager {
     // 后台任务标识符
     private let authRefreshTaskId = "com.EHE-Pilot.AuthRefresh"
     private let locationUpdateTaskId = "com.EHE-Pilot.LocationUpdate"
-    
+    private let timeOutdoorsUpdateTaskId = "com.EHE-Pilot.TimeOutdoorsUpdate"
+
     // 跟踪已注册的任务
     private var hasRegisteredAuthTask = false
     private var hasRegisteredLocationTask = false
-    
+    private var hasRegisteredTimeOutdoorsTask = false // 添加跟踪变量
     // 初始化时注册后台任务
     private init() {}
     
@@ -32,6 +33,15 @@ class BackgroundRefreshManager {
                 self.handleAuthRefreshTask(task: task as! BGAppRefreshTask)
             }
             hasRegisteredAuthTask = true
+        }
+        
+        // 注册 Time Outdoors 更新任务
+        if !hasRegisteredTimeOutdoorsTask {
+            BGTaskScheduler.shared.register(forTaskWithIdentifier: timeOutdoorsUpdateTaskId, using: nil) { task in
+                // 调用新的处理函数
+                self.handleTimeOutdoorsTask(task: task as! BGAppRefreshTask)
+            }
+            hasRegisteredTimeOutdoorsTask = true
         }
         
         // 只在需要时注册位置更新任务
@@ -85,6 +95,61 @@ class BackgroundRefreshManager {
         }
     }
     
+    private func handleTimeOutdoorsTask(task: BGAppRefreshTask) {
+        // 1. 先安排下一次任务 (重要！)
+        scheduleTimeOutdoorsUpdateTask() // 你需要创建这个 schedule 方法
+
+        // 2. 设置过期处理
+        task.expirationHandler = {
+            // 如果任务超时，需要在这里处理，例如取消网络请求
+            task.setTaskCompleted(success: false)
+            print("Time Outdoors background task expired.")
+        }
+
+        // 3. 执行你的 Time Outdoors 计算和上传逻辑
+        print("Starting Time Outdoors background task...")
+        // 使用 Dispatch Group 确保异步操作完成后再结束任务
+        let group = DispatchGroup()
+        var success = true // 跟踪任务是否成功
+
+        group.enter() // 进入 Dispatch Group
+        TimeOutdoorsManager.shared.processAndStorePastDaysOutdoorsTime { processSuccess in
+             if !processSuccess {
+                 print("Time Outdoors processing failed in background.")
+                 success = false
+             }
+             // 不论成功失败，处理完成后离开 group
+             group.leave()
+
+             // 处理完成后，在这里触发上传 (上传也应该是异步的)
+             // 注意：TimeOutdoorsManager 内部的上传逻辑也需要回调来通知完成
+             if processSuccess { // 只有处理成功才尝试上传
+                group.enter()
+                TimeOutdoorsManager.shared.triggerUploadInBackground { uploadSuccess, message in
+                     if !uploadSuccess {
+                         print("Time Outdoors upload failed in background: \(message)")
+                         // 根据需求决定上传失败是否算作整个任务失败
+                         // success = false // 如果上传失败算任务失败，取消这行注释
+                     }
+                     group.leave()
+                }
+             }
+        }
+
+
+        // 4. 等待所有异步操作完成
+         group.notify(queue: .global()) { // 使用全局队列等待
+             // 5. 结束后台任务
+             print("Time Outdoors background task finished with success: \(success)")
+             task.setTaskCompleted(success: success)
+        }
+
+        // --- 为了防止任务因为主线程阻塞而无法及时完成，
+        // --- 确保 TimeOutdoorsManager 中的方法是异步执行且有完成回调 ---
+        // --- 你可能需要修改 TimeOutdoorsManager 的方法签名以接受 completion handler ---
+
+    }
+    
     // 安排认证刷新任务
     func scheduleAuthRefreshTask() {
         let request = BGAppRefreshTaskRequest(identifier: authRefreshTaskId)
@@ -96,6 +161,19 @@ class BackgroundRefreshManager {
             print("Auth refresh task scheduled for 2 hours from now")
         } catch {
             print("Failed to schedule auth refresh task: \(error)")
+        }
+    }
+    
+    func scheduleTimeOutdoorsUpdateTask() {
+        let request = BGAppRefreshTaskRequest(identifier: timeOutdoorsUpdateTaskId)
+        // 设置执行频率，例如每 4 小时一次，并与其他任务错开
+        request.earliestBeginDate = Date(timeIntervalSinceNow: 4 * 60 * 60)
+
+        do {
+            try BGTaskScheduler.shared.submit(request)
+            print("Time Outdoors update task scheduled.")
+        } catch {
+            print("Failed to schedule Time Outdoors update task: \(error)")
         }
     }
     
@@ -157,6 +235,7 @@ class BackgroundRefreshManager {
         // 安排后台任务
         scheduleAuthRefreshTask()
         scheduleLocationUpdateTask()
+        scheduleTimeOutdoorsUpdateTask()
     }
     
     // 当应用进入后台时调用
@@ -164,6 +243,7 @@ class BackgroundRefreshManager {
         // 确保后台任务已安排
         scheduleAuthRefreshTask()
         scheduleLocationUpdateTask()
+        scheduleTimeOutdoorsUpdateTask()
     }
     
     

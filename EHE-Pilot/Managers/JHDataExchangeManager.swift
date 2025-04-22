@@ -306,4 +306,268 @@ class JHDataExchangeManager: ObservableObject {
             print("Error generating sample location records: \(error)")
         }
     }
+    
+    // In JHDataExchangeManager.swift
+
+
+    /// 上传 Time Outdoors 数据，但将其伪装成 Blood Glucose Observation
+    /// (Uploads Time Outdoors data, but disguises it as Blood Glucose Observation)
+    /// - Parameters:
+    ///   - payloads: 包含 "end_date_time" 和 "duration" 的 JSON 对象数组 (Array of JSON objects containing "end_date_time" and "duration")
+    ///   - authManager: 用于认证的 AuthManager 实例 (AuthManager instance for authentication)
+    ///   - completion: 完成回调 (Completion handler)
+    func uploadTimeOutdoorsDisguisedAsBloodGlucose(
+        payloads: [[String: Any]],
+        authManager: AuthManager,
+        completion: @escaping (Bool, String) -> Void
+    ) {
+        // 1. --- 认证检查 (Authentication Check) ---
+        guard authManager.isAuthenticated, let accessToken = authManager.currentAccessToken() else {
+            completion(false, "Not authorized")
+            return
+        }
+
+        if payloads.isEmpty {
+            completion(true, "No Time Outdoors payloads to upload.")
+            return
+        }
+
+        // 2. --- 准备 FHIR Bundle Entries ---
+        var entries: [[String: Any]] = []
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        isoFormatter.timeZone = TimeZone(secondsFromGMT: 0) // Ensure UTC
+
+        // --- 使用 Blood Glucose 的 Code ---
+        let bloodGlucoseCode: [String: Any] = [
+            "system": "https://w3id.org/openmhealth",
+            "code": "omh:blood-glucose:4.0" // Hardcode Blood Glucose code
+        ]
+        // --- ---
+
+        for payload in payloads {
+            // 确保 payload 包含所需键
+            guard let endDateTimeString = payload["end_date_time"] as? String,
+                  let effectiveDate = isoFormatter.date(from: endDateTimeString) else {
+                print("Warning: Could not parse end_date_time from payload, skipping entry.")
+                continue
+            }
+
+            do {
+                // Base64 编码原始的 duration payload
+                let jsonData = try JSONSerialization.data(withJSONObject: payload) // Encode the original payload
+                let base64String = jsonData.base64EncodedString()
+
+                // 创建 FHIR Observation Entry，使用 Blood Glucose Code
+                let entry: [String: Any] = [
+                    "resource": [
+                        "resourceType": "Observation",
+                        "status": "final",
+                        "subject": [ "reference": "Patient/\(stellaPatientId)" ], // Use class property
+                        "device": [ "reference": "Device/\(deviceId)" ],         // Use class property
+                        "code": [ "coding": [ bloodGlucoseCode ] ],               // *** 使用血糖 Code ***
+                        "effectiveDateTime": isoFormatter.string(from: effectiveDate), // 使用 payload 的时间
+                        "valueAttachment": [                                         // *** 将原始 payload 放入 ***
+                            "contentType": "application/json",
+                            "data": base64String                                     // *** Base64 编码后的 duration payload ***
+                        ],
+                        "identifier": [ // Unique identifier for the Observation
+                            [
+                                "value": UUID().uuidString,
+                                "system": "urn:ietf:rfc:3986" // Example system
+                            ]
+                        ]
+                        // 注意：这里没有添加 category，因为血糖通常不需要
+                    ],
+                    "request": [
+                        "method": "POST",
+                        "url": "Observation" // Target the Observation endpoint
+                    ]
+                ]
+                entries.append(entry)
+
+            } catch {
+                print("Error serializing payload: \(error). Skipping entry.")
+                continue
+            }
+        } // End loop through payloads
+
+        if entries.isEmpty {
+            completion(false, "Failed to prepare any valid entries for upload.")
+            return
+        }
+
+        // 3. --- 创建 FHIR Bundle ---
+        let bundle: [String: Any] = [
+            "resourceType": "Bundle",
+            "type": "batch", // Use "batch" for multiple independent entries
+            "entry": entries
+        ]
+
+        // 4. --- 准备并发送网络请求 (复用之前的逻辑) ---
+        let baseURLString = authManager.issuerURL.absoluteString.replacingOccurrences(of: "/o", with: "")
+        guard let fhirURL = URL(string: "\(baseURLString)/fhir/r5/") else { // Ensure correct endpoint
+             completion(false, "Invalid FHIR endpoint URL")
+             return
+        }
+
+        var request = URLRequest(url: fhirURL)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        do {
+            let jsonData = try JSONSerialization.data(withJSONObject: bundle)
+            request.httpBody = jsonData
+
+            // --- 发送请求 (URLSession Task) ---
+            let task = URLSession.shared.dataTask(with: request) { data, response, error in
+                // --- 处理响应 (Handle Response) ---
+                if let error = error {
+                    completion(false, "Network error: \(error.localizedDescription)")
+                    return
+                }
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    completion(false, "Invalid response from server.")
+                    return
+                }
+
+                let success = (200...299).contains(httpResponse.statusCode)
+                var message = "Upload status: \(httpResponse.statusCode)"
+                if let data = data, let responseBody = String(data: data, encoding: .utf8) {
+                     message += "\nResponse Body:\n\(responseBody)"
+                     // Optionally parse the response bundle for individual entry statuses here if needed
+                }
+
+                completion(success, message) // Call completion with result
+            }
+            task.resume() // Start the network request
+
+        } catch {
+             completion(false, "Failed to serialize bundle: \(error.localizedDescription)")
+        }
+    } // End of function uploadTimeOutdoorsDisguisedAsBloodGlucose
+
+    // 新方法：上传通用的 Observation 数据
+    func uploadGenericObservations(payloads: [[String: Any]],
+                                   observationCode: [String: String], // 例如: ["system": "...", "code": "...", "display": "..."]
+                                   authManager: AuthManager,
+                                   completion: @escaping (Bool, String) -> Void) {
+
+        guard authManager.isAuthenticated, let accessToken = authManager.currentAccessToken() else {
+            completion(false, "Not authorized")
+            return
+        }
+
+        if payloads.isEmpty {
+            completion(true, "No payloads to upload.")
+            return
+        }
+
+        var entries: [[String: Any]] = []
+        let isoFormatter = ISO8601DateFormatter() // For effectiveDateTime
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+
+        for payload in payloads {
+            // 从 payload 中提取 end_date_time 作为 effectiveDateTime
+            guard let endDateTimeString = payload["end_date_time"] as? String,
+                  let effectiveDate = isoFormatter.date(from: endDateTimeString) else {
+                print("Warning: Could not parse end_date_time from payload, skipping entry.")
+                continue // 跳过这个 payload
+            }
+
+            do {
+                let jsonData = try JSONSerialization.data(withJSONObject: payload)
+                let base64String = jsonData.base64EncodedString()
+
+
+                let entry: [String: Any] = [
+                    "resource": [
+                        "resourceType": "Observation",
+                        "status": "final",
+                        "subject": [ "reference": "Patient/\(stellaPatientId)" ], // 使用类内部定义的 patientId
+                        "device": [ "reference": "Device/\(deviceId)" ],         // 使用类内部定义的 deviceId
+                        "code": [ "coding": [ observationCode ] ],               // 使用传入的 code
+                        "effectiveDateTime": isoFormatter.string(from: effectiveDate), // 使用 payload 的时间
+                        "valueAttachment": [
+                            "contentType": "application/json",
+                            "data": base64String
+                        ],
+                         "identifier": [ // 可选，但建议有唯一标识符
+                             [
+                                 "value": UUID().uuidString,
+                                 "system": "urn:ietf:rfc:3986" // 或其他合适的 system
+                             ]
+                         ]
+                    ],
+                    "request": [
+                        "method": "POST",
+                        "url": "Observation"
+                    ]
+                ]
+                entries.append(entry)
+
+            } catch {
+                print("Error serializing payload: \(error). Skipping entry.")
+                continue
+            }
+        }
+
+         if entries.isEmpty {
+             completion(false, "Failed to prepare any valid entries for upload.")
+             return
+         }
+
+        // 创建 Bundle
+        let bundle: [String: Any] = [
+            "resourceType": "Bundle",
+            "type": "batch",
+            "entry": entries
+        ]
+
+        // --- 复用或调整现有的上传网络请求逻辑 ---
+         // 使用与 uploadLocationData 相同的 endpoint 和认证头
+         let baseURLString = authManager.issuerURL.absoluteString.replacingOccurrences(of: "/o", with: "")
+         guard let fhirURL = URL(string: "\(baseURLString)/fhir/r5/") else { // 确保是正确的 FHIR endpoint
+              DispatchQueue.main.async {
+                   completion(false, "Invalid FHIR endpoint URL")
+              }
+              return
+         }
+
+         var request = URLRequest(url: fhirURL)
+         request.httpMethod = "POST"
+         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+         do {
+             let jsonData = try JSONSerialization.data(withJSONObject: bundle)
+             request.httpBody = jsonData
+             // ... (发送请求，处理响应，调用 completion 的逻辑，类似 uploadLocationData) ...
+             // ... 在请求成功的回调中，调用 completion(true, "...") ...
+             // ... 在请求失败的回调中，调用 completion(false, "...") ...
+
+              // 示例 URLSession Task (需要完整实现错误处理和状态码检查)
+              let task = URLSession.shared.dataTask(with: request) { data, response, error in
+                   // ... 处理响应 ...
+                   if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+                        completion(true, "Successfully uploaded \(entries.count) generic observations.")
+                   } else {
+                        // 解析错误信息
+                        var errorMsg = "Upload failed."
+                        if let error = error { errorMsg += " Error: \(error.localizedDescription)" }
+                        if let resp = response as? HTTPURLResponse { errorMsg += " Status: \(resp.statusCode)." }
+                        if let data = data, let responseBody = String(data: data, encoding: .utf8) { errorMsg += " Body: \(responseBody)" }
+                        completion(false, errorMsg)
+                   }
+              }
+              task.resume()
+
+         } catch {
+              completion(false, "Failed to serialize bundle: \(error.localizedDescription)")
+         }
+    }
+
+    // ... 其他 JHDataExchangeManager 代码 ...
 }

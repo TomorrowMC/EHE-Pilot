@@ -53,6 +53,9 @@ struct EHE_PilotApp: App {
             case .active:
                 // 应用进入前台时启动前台定位更新
                 LocationManager.shared.startForegroundUpdates()
+                TimeOutdoorsManager.shared.processAndStorePastDaysOutdoorsTime(){_ in 
+                    
+                }
                 
                 // 验证认证状态 - 更改为更可靠的方法
                 if AppDelegate.shared.authManager.isAuthenticated {

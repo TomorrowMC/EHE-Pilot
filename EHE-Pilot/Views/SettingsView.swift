@@ -133,6 +133,9 @@ struct SettingsView: View {
                     NavigationLink(destination: TokenTestView()){
                         Text("Test Token")
                     }
+                    NavigationLink("Time Outdoors Test") {
+                        TimeOutdoorsTestView()
+                    }
                 }
             }
             .navigationTitle("Settings")

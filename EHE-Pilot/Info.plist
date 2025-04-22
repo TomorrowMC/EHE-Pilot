@@ -2,16 +2,16 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>NSAppTransportSecurity</key>
-    <dict>
-        <!-- 全局禁用 ATS，非常不推荐 -->
-         <key>NSAllowsArbitraryLoads</key>
-        <true/>
-    </dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+	</dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
+		<string>com.EHE-Pilot.TimeOutdoorsUpdate</string>
 		<string>com.EHE-Pilot.LocationUpdate</string>
-        <string>com.EHE-Pilot.AuthRefresh</string>
+		<string>com.EHE-Pilot.AuthRefresh</string>
 	</array>
 	<key>CFBundleURLTypes</key>
 	<array>

@@ -27,7 +27,8 @@ struct ConsentDebugTool: View {
         "omh:geoposition:1.0",
         "omh:step-count:1.0",
         "omh:heart-rate:1.0",
-        "omh:sleep-duration:1.0"
+        "omh:sleep-duration:1.0",
+        "omh:time-interval:1.0"
     ]
     
     // Consent status

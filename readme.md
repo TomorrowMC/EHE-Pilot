@@ -32,33 +32,84 @@ The app also allows you to set a "home" location and calculates daily statistics
 
 ## Project Structure
 ```
-LocationTracker/
-├── App/
-│   └── EHE_PilotApp.swift              # Main app entry, BGTask registration
-│
-├── Models/
-│   └── LocationPin.swift               # Model for map annotations (UI)
-│
-├── Views/
-│   ├── MainView.swift                  # Handles app start and permission checks
-│   ├── LocationPermissionView.swift    # Handles location permission requests
-│   ├── ContentTabView.swift            # Main tab bar navigation
-│   ├── MapContentView.swift            # Shows user’s location on a map
-│   ├── StatisticsView.swift            # Displays daily stats & location records
-│   ├── SettingsView.swift              # App settings, CSV export button
-│   ├── HomeLocationSelectorView.swift  # Select/update home location
-│   └── LocationUpdateFrequencyView.swift # (Optional) Frequency setting UI
-│
-├── ViewModels/
-│   └── MainViewModel.swift             # Business logic for main view
-│
-├── Managers/
-│   ├── LocationManager.swift           # Core location logic, background tasks
-│   ├── PersistenceController.swift     # CoreData stack management
-│   └── CSVExporter.swift               # Generates CSV from CoreData records
-│
-└── Extensions/
-    └── Calendar+Extension.swift        # Utility extensions for date/time calculations
+EHE-Pilot
+├─ .DS_Store
+├─ EHE-Pilot
+│  ├─ Assets.xcassets
+│  │  ├─ AccentColor.colorset
+│  │  │  └─ Contents.json
+│  │  ├─ AppIcon.appiconset
+│  │  │  ├─ Contents.json
+│  │  │  └─ Untitled design.png
+│  │  └─ Contents.json
+│  ├─ CoreData
+│  │  └─ LocationTracker.xcdatamodeld
+│  │     └─ LocationTracker.xcdatamodel
+│  │        └─ contents
+│  ├─ EHE_Pilot.entitlements
+│  ├─ EHE_PilotApp.swift
+│  ├─ Extension
+│  │  └─ Calendar+Extension.swift
+│  ├─ Info.plist
+│  ├─ Managers
+│  │  ├─ AuthManager.swift
+│  │  ├─ BackgroundRefreshManager.swift
+│  │  ├─ CSVExporter.swift
+│  │  ├─ ClipboardLoginHelper.swift
+│  │  ├─ FHIRUploadService.swift
+│  │  ├─ JHDataExchangeManager.swift
+│  │  ├─ LocationManager.swift
+│  │  ├─ LocationUploadManager.swift
+│  │  ├─ MotionManager.swift
+│  │  ├─ PersistenceController.swift
+│  │  └─ TokenRefreshManager.swift
+│  ├─ Models
+│  │  └─ LocationPin.swift
+│  ├─ Preview Content
+│  │  └─ Preview Assets.xcassets
+│  │     └─ Contents.json
+│  ├─ ViewModels
+│  │  └─ MainViewModel.swift
+│  └─ Views
+│     ├─ AppDelegate.swift
+│     ├─ ContentTabView.swift
+│     ├─ DataTest
+│     │  ├─ ConsentDebugTool.swift
+│     │  ├─ FHIRTestTool.swift
+│     │  ├─ LocationDataPreviewView.swift
+│     │  ├─ LoginTestView.swift
+│     │  ├─ OAuthLoginView.swift
+│     │  ├─ SampleLocationGenerator.swift
+│     │  └─ UploadDebugTool.swift
+│     ├─ KeyTest
+│     │  └─ TokenTestView.swift
+│     ├─ LocationPermissionView.swift
+│     ├─ MainView.swift
+│     ├─ MapContentView.swift
+│     ├─ Setting
+│     │  ├─ ConsentManagerView.swift
+│     │  ├─ HomeLocationSelectorView.swift
+│     │  ├─ LocationUpdateFrequencyView.swift
+│     │  └─ UserProfileView.swift
+│     ├─ SettingsView.swift
+│     └─ StatisticsView.swift
+├─ EHE-Pilot.xcodeproj
+│  ├─ project.pbxproj
+│  ├─ project.xcworkspace
+│  │  ├─ contents.xcworkspacedata
+│  │  ├─ xcshareddata
+│  │  │  └─ swiftpm
+│  │  │     ├─ Package.resolved
+│  │  │     └─ configuration
+│  │  └─ xcuserdata
+│  │     └─ yifei.hu.xcuserdatad
+│  │        └─ UserInterfaceState.xcuserstate
+│  └─ xcuserdata
+│     └─ yifei.hu.xcuserdatad
+│        └─ xcschemes
+│           └─ xcschememanagement.plist
+└─ readme.md
+
 ```
 ## Data Models
 
@@ -150,83 +201,4 @@ Users can easily export and share this file for external analysis.
 ## License
 This project is available under the MIT License. See the [LICENSE](LICENSE) file for details.
 
-```
-EHE-Pilot
-├─ .DS_Store
-├─ EHE-Pilot
-│  ├─ Assets.xcassets
-│  │  ├─ AccentColor.colorset
-│  │  │  └─ Contents.json
-│  │  ├─ AppIcon.appiconset
-│  │  │  ├─ Contents.json
-│  │  │  └─ Untitled design.png
-│  │  └─ Contents.json
-│  ├─ CoreData
-│  │  └─ LocationTracker.xcdatamodeld
-│  │     └─ LocationTracker.xcdatamodel
-│  │        └─ contents
-│  ├─ EHE_Pilot.entitlements
-│  ├─ EHE_PilotApp.swift
-│  ├─ Extension
-│  │  └─ Calendar+Extension.swift
-│  ├─ Info.plist
-│  ├─ Managers
-│  │  ├─ AuthManager.swift
-│  │  ├─ BackgroundRefreshManager.swift
-│  │  ├─ CSVExporter.swift
-│  │  ├─ ClipboardLoginHelper.swift
-│  │  ├─ FHIRUploadService.swift
-│  │  ├─ JHDataExchangeManager.swift
-│  │  ├─ LocationManager.swift
-│  │  ├─ LocationUploadManager.swift
-│  │  ├─ MotionManager.swift
-│  │  ├─ PersistenceController.swift
-│  │  └─ TokenRefreshManager.swift
-│  ├─ Models
-│  │  └─ LocationPin.swift
-│  ├─ Preview Content
-│  │  └─ Preview Assets.xcassets
-│  │     └─ Contents.json
-│  ├─ ViewModels
-│  │  └─ MainViewModel.swift
-│  └─ Views
-│     ├─ AppDelegate.swift
-│     ├─ ContentTabView.swift
-│     ├─ DataTest
-│     │  ├─ ConsentDebugTool.swift
-│     │  ├─ FHIRTestTool.swift
-│     │  ├─ LocationDataPreviewView.swift
-│     │  ├─ LoginTestView.swift
-│     │  ├─ OAuthLoginView.swift
-│     │  ├─ SampleLocationGenerator.swift
-│     │  └─ UploadDebugTool.swift
-│     ├─ KeyTest
-│     │  └─ TokenTestView.swift
-│     ├─ LocationPermissionView.swift
-│     ├─ MainView.swift
-│     ├─ MapContentView.swift
-│     ├─ Setting
-│     │  ├─ ConsentManagerView.swift
-│     │  ├─ HomeLocationSelectorView.swift
-│     │  ├─ LocationUpdateFrequencyView.swift
-│     │  └─ UserProfileView.swift
-│     ├─ SettingsView.swift
-│     └─ StatisticsView.swift
-├─ EHE-Pilot.xcodeproj
-│  ├─ project.pbxproj
-│  ├─ project.xcworkspace
-│  │  ├─ contents.xcworkspacedata
-│  │  ├─ xcshareddata
-│  │  │  └─ swiftpm
-│  │  │     ├─ Package.resolved
-│  │  │     └─ configuration
-│  │  └─ xcuserdata
-│  │     └─ yifei.hu.xcuserdatad
-│  │        └─ UserInterfaceState.xcuserstate
-│  └─ xcuserdata
-│     └─ yifei.hu.xcuserdatad
-│        └─ xcschemes
-│           └─ xcschememanagement.plist
-└─ readme.md
 
-```

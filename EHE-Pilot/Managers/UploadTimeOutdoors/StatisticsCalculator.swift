@@ -35,7 +35,6 @@ class StatisticsCalculator {
             return 0
         }
 
-        // --- 复用 StatisticsView 中的计算逻辑 ---
         var timeOutdoors: TimeInterval = 0
         var lastOutdoorsTime: Date?
         var hasIndoorRecord = false // 用于处理全天在户外或没有室内记录的情况

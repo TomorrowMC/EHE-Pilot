@@ -51,6 +51,7 @@ This application is designed to integrate with health data platforms like the Ju
 - **Consent:** The server enforces data consent rules. Data types (like `omh:time-interval:1.0`) will only be accepted if the authenticated patient has consented to share that specific type of data within the relevant study context. Errors related to consent (e.g., `403 Forbidden`) are handled and logged.
 
 ## Project Structure
+```
 EHE-Pilot
 ├─ .DS_Store
 ├─ EHE-Pilot
@@ -109,6 +110,7 @@ EHE-Pilot
 │  ├─ project.pbxproj
 │  └─ project.xcworkspace
 └─ readme.md
+```
 
 ## Data Models
 

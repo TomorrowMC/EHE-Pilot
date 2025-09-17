@@ -32,5 +32,9 @@
 		<string>fetch</string>
 		<string>processing</string>
 	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>oura</string>
+	</array>
 </dict>
 </plist>

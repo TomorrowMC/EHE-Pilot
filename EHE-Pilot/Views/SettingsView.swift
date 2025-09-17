@@ -99,11 +99,20 @@ struct SettingsView: View {
                     NavigationLink(destination: LocationUpdateFrequencyView()) {
                         Text("Location Update Frequency")
                     }
-                    
+
                     NavigationLink(destination: DataUploadView()) {
                         Text("Data Upload Settings")
                     }
-                    
+
+                    NavigationLink(destination: OuraReminderSettingsView()) {
+                        HStack {
+                            Text("Oura Sync Reminder")
+                            Spacer()
+                            Image(systemName: "bell.fill")
+                                .foregroundColor(.blue)
+                        }
+                    }
+
                     Button(action: {
                         showingResetAlert = true
                     }) {
@@ -135,6 +144,17 @@ struct SettingsView: View {
                     }
                     NavigationLink("Time Outdoors Test") {
                         TimeOutdoorsTestView()
+                    }
+
+                    Button(action: {
+                        OuraManager.shared.triggerTestReminder()
+                    }) {
+                        HStack {
+                            Text("Test Oura Notification")
+                            Spacer()
+                            Image(systemName: "bell.badge")
+                                .foregroundColor(.orange)
+                        }
                     }
                 }
             }

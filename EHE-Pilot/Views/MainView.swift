@@ -11,6 +11,7 @@ import UIKit
 
 struct MainView: View {
     @StateObject private var locationManager = LocationManager.shared
+    @StateObject private var ouraManager = OuraManager.shared
     @EnvironmentObject var authManager: AuthManager
     @State private var showInvitationAlert: Bool = false
     @State private var isProcessingLogin: Bool = false
@@ -26,7 +27,10 @@ struct MainView: View {
         // Start location updates when app appears
         .onAppear {
             LocationManager.shared.startForegroundUpdates()
-            
+
+            // Check for daily first open to show Oura reminder
+            ouraManager.checkDailyFirstOpen()
+
             // Check clipboard for invitation link if not authenticated, with 2-second delay
             if !authManager.isAuthenticated {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
@@ -54,12 +58,12 @@ struct MainView: View {
                 if isProcessingLogin {
                     Color.black.opacity(0.4)
                         .edgesIgnoringSafeArea(.all)
-                    
+
                     VStack {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             .scaleEffect(1.5)
-                        
+
                         Text("Signing in...")
                             .foregroundColor(.white)
                             .padding(.top, 20)
@@ -68,6 +72,18 @@ struct MainView: View {
                     .background(Color(UIColor.systemBackground).opacity(0.8))
                     .cornerRadius(10)
                     .shadow(radius: 10)
+                }
+
+                if ouraManager.shouldShowDailyReminder {
+                    OuraDailyReminderView(
+                        isPresented: $ouraManager.shouldShowDailyReminder,
+                        onOpenOura: {
+                            ouraManager.openOuraApp()
+                        },
+                        onIgnore: {
+                            // Simply dismiss the reminder
+                        }
+                    )
                 }
             }
         )

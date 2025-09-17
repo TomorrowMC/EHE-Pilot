@@ -60,6 +60,8 @@ class StatisticsCalculator {
                     // 结算上一个户外时段
                     timeOutdoors += currentTimestamp.timeIntervalSince(last)
                     lastOutdoorsTime = nil // 重置户外开始时间
+                    
+                    
                 }
             }
         }

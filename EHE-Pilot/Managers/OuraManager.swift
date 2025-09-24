@@ -138,14 +138,22 @@ class OuraManager: ObservableObject {
 
     // MARK: - Deep Link to Oura App
     func openOuraApp() {
+        print("openOuraApp called")
         // Try to open Oura app with URL scheme
         if let url = URL(string: "oura://") {
+            print("Checking if Oura app can be opened with URL: \(url)")
             if UIApplication.shared.canOpenURL(url) {
-                UIApplication.shared.open(url, options: [:], completionHandler: nil)
+                print("Oura app detected, opening...")
+                UIApplication.shared.open(url, options: [:]) { success in
+                    print("Opening Oura app result: \(success)")
+                }
             } else {
+                print("Oura app not installed, opening App Store...")
                 // If Oura app is not installed, open App Store
                 openOuraInAppStore()
             }
+        } else {
+            print("Failed to create Oura URL")
         }
     }
 
@@ -193,7 +201,7 @@ class OuraManager: ObservableObject {
             content.badge = 1
 
             let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 2, repeats: false)
-            let request = UNNotificationRequest(identifier: "test_notification_\(Date().timeIntervalSince1970)", content: content, trigger: trigger)
+            let request = UNNotificationRequest(identifier: "oura_test_notification_\(Date().timeIntervalSince1970)", content: content, trigger: trigger)
 
             UNUserNotificationCenter.current().add(request) { error in
                 if let error = error {

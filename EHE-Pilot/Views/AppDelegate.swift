@@ -110,10 +110,15 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     // 处理用户与通知的交互
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         print("User tapped notification: \(response.notification.request.content.title)")
+        print("Notification identifier: \(response.notification.request.identifier)")
 
-        // 如果是Oura通知，可以打开Oura应用
+        // 如果是Oura通知，延迟一点时间后打开Oura应用，确保应用已完全启动
         if response.notification.request.identifier.contains("oura") {
-            OuraManager.shared.openOuraApp()
+            print("Oura notification tapped - will open Oura app in 1 second")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                print("Opening Oura app...")
+                OuraManager.shared.openOuraApp()
+            }
         }
 
         completionHandler()

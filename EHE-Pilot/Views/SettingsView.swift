@@ -150,10 +150,21 @@ struct SettingsView: View {
                         OuraManager.shared.triggerTestReminder()
                     }) {
                         HStack {
-                            Text("Test Oura Notification")
+                            Text("Test Oura Popup Reminder")
                             Spacer()
                             Image(systemName: "bell.badge")
                                 .foregroundColor(.orange)
+                        }
+                    }
+
+                    Button(action: {
+                        OuraManager.shared.sendTestNotification()
+                    }) {
+                        HStack {
+                            Text("Test System Notification")
+                            Spacer()
+                            Image(systemName: "app.badge")
+                                .foregroundColor(.blue)
                         }
                     }
                 }

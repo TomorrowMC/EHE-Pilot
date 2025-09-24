@@ -41,7 +41,10 @@ struct EHE_PilotApp: App {
                 .onAppear {
                     // 启动时设置位置服务
                     setupLocationServices()
-                    
+
+                    // 检查Oura日常提醒
+                    OuraManager.shared.checkDailyFirstOpen()
+
                     // 尝试自动登录（如果尚未登录）
                     if !AppDelegate.shared.authManager.isAuthenticated {
                         AppDelegate.shared.attemptAutoLogin()

@@ -36,5 +36,16 @@
 	<array>
 		<string>oura</string>
 	</array>
+	<key>NSUserNotificationsUsageDescription</key>
+	<string>This app needs notification permission to remind you to sync your Oura ring data daily.</string>
+	<key>UIUserNotificationSettings</key>
+	<dict>
+		<key>UIUserNotificationTypeAlert</key>
+		<true/>
+		<key>UIUserNotificationTypeBadge</key>
+		<true/>
+		<key>UIUserNotificationTypeSound</key>
+		<true/>
+	</dict>
 </dict>
 </plist>

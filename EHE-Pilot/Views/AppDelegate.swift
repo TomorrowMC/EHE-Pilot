@@ -9,8 +9,9 @@
 import UIKit
 import BackgroundTasks
 import SwiftUI
+import UserNotifications
 
-class AppDelegate: NSObject, UIApplicationDelegate {
+class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     // Shared instance for global access
     static let shared = AppDelegate()
     
@@ -18,9 +19,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     let authManager = AuthManager()
     
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        // 设置通知中心代理
+        UNUserNotificationCenter.current().delegate = self
+
         // 初始化并注册后台刷新管理器
         BackgroundRefreshManager.shared.registerBackgroundTasks()
-        
+
         // 自动发现OAuth配置
         authManager.discoverConfiguration { success in
             if success {
@@ -28,7 +32,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                 self.attemptAutoLogin()
             }
         }
-        
+
         return true
     }
     
@@ -92,6 +96,27 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             FHIRUploadService.shared.uploadLocationRecords(authManager: authManager) { success, message in
                 print("Auto data upload attempt: \(success ? "Success" : "Failed") - \(message)")
             }
+    }
+
+    // MARK: - UNUserNotificationCenterDelegate
+
+    // 在前台显示通知
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        print("Will present notification: \(notification.request.content.title)")
+        // 即使应用在前台也显示通知
+        completionHandler([.alert, .badge, .sound])
+    }
+
+    // 处理用户与通知的交互
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        print("User tapped notification: \(response.notification.request.content.title)")
+
+        // 如果是Oura通知，可以打开Oura应用
+        if response.notification.request.identifier.contains("oura") {
+            OuraManager.shared.openOuraApp()
+        }
+
+        completionHandler()
     }
 }
 
